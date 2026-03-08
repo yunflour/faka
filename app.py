@@ -20,10 +20,99 @@ from typing import Any, Optional
 import requests
 from flask import Flask, g, jsonify, redirect, render_template, request, send_file, session, url_for
 
-# 加载配置
+def _env_str(name: str, default: str) -> str:
+    value = os.getenv(name)
+    return value if value not in (None, "") else default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw in (None, ""):
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw in (None, ""):
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+# 默认配置（可被 config.json 和环境变量覆盖）
+CONFIG = {
+    "server": {
+        "host": "0.0.0.0",
+        "port": 2158,
+        "debug": False,
+        "secret_key": "change-me",
+    },
+    "admin": {
+        "username": "admin",
+        "password": "admin123",
+    },
+    "warranty": {
+        "default_days": 7,
+        "max_replacements": 3,
+    },
+    "verification": {
+        "idc_region": "us-east-1",
+        "profile_arn": "arn:aws:q::aws:profile/default",
+        "timeout_seconds": 20,
+    },
+    "database": {
+        "path": "faka.db",
+    },
+    "cdk": {
+        "length": 16,
+        "prefix": "KIRO",
+    },
+}
+
+# 兼容现有 config.json（有则加载）
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-    CONFIG = json.load(f)
+if os.path.exists(CONFIG_PATH):
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        file_config = json.load(f)
+    for section, section_value in file_config.items():
+        if isinstance(section_value, dict) and isinstance(CONFIG.get(section), dict):
+            CONFIG[section].update(section_value)
+        else:
+            CONFIG[section] = section_value
+
+# 环境变量覆盖（Railway 部署优先使用这些）
+CONFIG["server"]["host"] = _env_str("HOST", str(CONFIG["server"]["host"]))
+CONFIG["server"]["port"] = _env_int("PORT", int(CONFIG["server"]["port"]))
+CONFIG["server"]["debug"] = _env_bool("DEBUG", bool(CONFIG["server"]["debug"]))
+CONFIG["server"]["secret_key"] = _env_str("SECRET_KEY", str(CONFIG["server"]["secret_key"]))
+
+CONFIG["admin"]["username"] = _env_str("ADMIN_USERNAME", str(CONFIG["admin"]["username"]))
+CONFIG["admin"]["password"] = _env_str("ADMIN_PASSWORD", str(CONFIG["admin"]["password"]))
+
+CONFIG["warranty"]["default_days"] = _env_int(
+    "WARRANTY_DEFAULT_DAYS", int(CONFIG["warranty"]["default_days"])
+)
+CONFIG["warranty"]["max_replacements"] = _env_int(
+    "WARRANTY_MAX_REPLACEMENTS", int(CONFIG["warranty"]["max_replacements"])
+)
+
+CONFIG["verification"]["idc_region"] = _env_str(
+    "VERIFICATION_IDC_REGION", str(CONFIG["verification"]["idc_region"])
+)
+CONFIG["verification"]["profile_arn"] = _env_str(
+    "VERIFICATION_PROFILE_ARN", str(CONFIG["verification"]["profile_arn"])
+)
+CONFIG["verification"]["timeout_seconds"] = _env_int(
+    "VERIFICATION_TIMEOUT_SECONDS", int(CONFIG["verification"]["timeout_seconds"])
+)
+
+CONFIG["database"]["path"] = _env_str("DATABASE_PATH", str(CONFIG["database"]["path"]))
+
+CONFIG["cdk"]["length"] = _env_int("CDK_LENGTH", int(CONFIG["cdk"]["length"]))
+CONFIG["cdk"]["prefix"] = _env_str("CDK_PREFIX", str(CONFIG["cdk"]["prefix"]))
 
 app = Flask(__name__)
 app.secret_key = CONFIG["server"]["secret_key"]
