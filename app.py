@@ -22,7 +22,7 @@ import pymysql.cursors
 from dbutils.pooled_db import PooledDB
 
 import requests
-from flask import Flask, g, jsonify, redirect, render_template, request, Response, send_file, session, url_for
+from flask import Flask, g, jsonify, redirect, render_template, request, Response, send_file, session, stream_with_context, url_for
 
 def _env_str(name: str, default: str) -> str:
     value = os.getenv(name)
@@ -1590,10 +1590,12 @@ def verify_all_accounts():
         accounts = _execute(db, "SELECT id, email FROM accounts WHERE status IN ('available', 'unknown')").fetchall()
 
     total = len(accounts)
-    if total == 0:
-        return jsonify({"success": True, "total": 0, "blocked": 0, "unknown": 0, "available": 0})
 
     def generate():
+        if total == 0:
+            yield f"data: {json.dumps({'done': True, 'total': 0, 'blocked': 0, 'unknown': 0, 'available': 0}, ensure_ascii=False)}\n\n"
+            return
+
         blocked_count = 0
         available_count = 0
         unknown_count = 0
@@ -1632,11 +1634,12 @@ def verify_all_accounts():
         yield f"data: {json.dumps(complete_data, ensure_ascii=False)}\n\n"
 
     return Response(
-        generate(),
+        stream_with_context(generate()),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
         }
     )
 
