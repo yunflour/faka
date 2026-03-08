@@ -10,12 +10,16 @@ import os
 import random
 import re
 import secrets
-import sqlite3
 import string
 import time
 from datetime import datetime, timedelta
 from functools import wraps
 from typing import Any, Optional
+from urllib.parse import urlparse
+
+import pymysql
+import pymysql.cursors
+from dbutils.pooled_db import PooledDB
 
 import requests
 from flask import Flask, g, jsonify, redirect, render_template, request, send_file, session, url_for
@@ -64,7 +68,7 @@ CONFIG = {
         "timeout_seconds": 20,
     },
     "database": {
-        "path": "faka.db",
+        "url": "mysql://root:password@localhost:3306/railway",
     },
     "cdk": {
         "length": 16,
@@ -98,7 +102,7 @@ CONFIG["verification"]["timeout_seconds"] = _env_int(
     "VERIFICATION_TIMEOUT_SECONDS", int(CONFIG["verification"]["timeout_seconds"])
 )
 
-CONFIG["database"]["path"] = _env_str("DATABASE_PATH", str(CONFIG["database"]["path"]))
+CONFIG["database"]["url"] = _env_str("DATABASE_URL", str(CONFIG["database"]["url"]))
 
 CONFIG["cdk"]["length"] = _env_int("CDK_LENGTH", int(CONFIG["cdk"]["length"]))
 CONFIG["cdk"]["prefix"] = _env_str("CDK_PREFIX", str(CONFIG["cdk"]["prefix"]))
@@ -106,98 +110,132 @@ CONFIG["cdk"]["prefix"] = _env_str("CDK_PREFIX", str(CONFIG["cdk"]["prefix"]))
 app = Flask(__name__)
 app.secret_key = CONFIG["server"]["secret_key"]
 
-DATABASE = os.path.join(os.path.dirname(__file__), CONFIG["database"]["path"])
+
+def _parse_database_url(url: str) -> dict:
+    """解析 DATABASE_URL 为连接参数"""
+    parsed = urlparse(url)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 3306,
+        "user": parsed.username or "root",
+        "password": parsed.password or "",
+        "database": (parsed.path or "/railway").lstrip("/"),
+    }
+
+
+_db_params = _parse_database_url(CONFIG["database"]["url"])
+_pool = PooledDB(
+    creator=pymysql,
+    maxconnections=10,
+    mincached=2,
+    maxcached=5,
+    blocking=True,
+    host=_db_params["host"],
+    port=_db_params["port"],
+    user=_db_params["user"],
+    password=_db_params["password"],
+    database=_db_params["database"],
+    charset="utf8mb4",
+    cursorclass=pymysql.cursors.DictCursor,
+    autocommit=False,
+)
 
 
 # ==================== 数据库相关 ====================
 
 
 def get_db():
-    """获取数据库连接"""
+    """获取数据库连接（从连接池）"""
     db = getattr(g, "_database", None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
+        db = g._database = _pool.connection()
     return db
 
 
 @app.teardown_appcontext
 def close_connection(exception):
-    """关闭数据库连接"""
+    """归还数据库连接到连接池"""
     db = getattr(g, "_database", None)
     if db is not None:
         db.close()
 
 
+def _execute(db, sql, params=None):
+    """执行 SQL 并返回 cursor（封装 DictCursor 用法）"""
+    cursor = db.cursor()
+    cursor.execute(sql, params or ())
+    return cursor
+
+
 def init_db():
-    """初始化数据库"""
-    conn = sqlite3.connect(DATABASE)
+    """初始化数据库（MySQL）"""
+    conn = _pool.connection()
     cursor = conn.cursor()
 
     # CDK表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cdks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            code TEXT UNIQUE NOT NULL,
-            account_id INTEGER,
-            status TEXT DEFAULT 'unused',
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            code VARCHAR(100) UNIQUE NOT NULL,
+            account_id INT,
+            status VARCHAR(20) DEFAULT 'unused',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            used_at TIMESTAMP,
-            used_by TEXT
-        )
+            used_at TIMESTAMP NULL,
+            used_by VARCHAR(100)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
     # 账号表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS accounts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT NOT NULL,
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            email VARCHAR(255) NOT NULL,
             access_token TEXT,
             refresh_token TEXT,
             id_token TEXT,
-            token_data TEXT,
-            status TEXT DEFAULT 'available',
-            last_verified_at TIMESTAMP,
+            token_data LONGTEXT,
+            status VARCHAR(20) DEFAULT 'available',
+            last_verified_at TIMESTAMP NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
     # 订单表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cdk_code TEXT NOT NULL,
-            account_id INTEGER NOT NULL,
-            user_ip TEXT,
-            warranty_days INTEGER DEFAULT 7,
-            warranty_expires_at TIMESTAMP,
-            replacement_count INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'active',
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            cdk_code VARCHAR(100) NOT NULL,
+            account_id INT NOT NULL,
+            user_ip VARCHAR(50),
+            warranty_days INT DEFAULT 7,
+            warranty_expires_at TIMESTAMP NULL,
+            replacement_count INT DEFAULT 0,
+            status VARCHAR(20) DEFAULT 'active',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (account_id) REFERENCES accounts(id),
             FOREIGN KEY (cdk_code) REFERENCES cdks(code)
-        )
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
     # 替换记录表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS replacements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER NOT NULL,
-            old_account_id INTEGER NOT NULL,
-            new_account_id INTEGER NOT NULL,
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            order_id INT NOT NULL,
+            old_account_id INT NOT NULL,
+            new_account_id INT NOT NULL,
             reason TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (order_id) REFERENCES orders(id)
-        )
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
     # 系统设置表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
+            `key` VARCHAR(100) PRIMARY KEY,
             value TEXT NOT NULL
-        )
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
     # 初始化默认设置
@@ -209,7 +247,7 @@ def init_db():
     ]
     for key, value in default_settings:
         cursor.execute(
-            "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
+            "INSERT IGNORE INTO settings (`key`, value) VALUES (%s, %s)", (key, value)
         )
 
     conn.commit()
@@ -219,15 +257,16 @@ def init_db():
 def get_setting(key: str, default: str = "") -> str:
     """获取系统设置"""
     db = get_db()
-    row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    row = _execute(db, "SELECT value FROM settings WHERE `key` = %s", (key,)).fetchone()
     return row["value"] if row else default
 
 
 def set_setting(key: str, value: str):
     """设置系统设置"""
     db = get_db()
-    db.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value)
+    _execute(
+        db, "INSERT INTO settings (`key`, value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE value = %s",
+        (key, value, value)
     )
     db.commit()
 
@@ -359,7 +398,7 @@ def _pick_first_nonempty(*values: Any) -> str:
     return ""
 
 
-def resolve_account_verification_context(account: sqlite3.Row) -> dict[str, str]:
+def resolve_account_verification_context(account: dict) -> dict[str, str]:
     """从账号字段和 token_data 中提取校验所需上下文。"""
     token_data = _parse_token_data(account["token_data"])
     token_output = token_data.get("token_output", {}) if isinstance(token_data, dict) else {}
@@ -610,7 +649,7 @@ def classify_credential_verification(detail: dict[str, Any]) -> dict[str, Any]:
 def check_account_status(account_id: int) -> dict[str, Any]:
     """检查账号状态"""
     db = get_db()
-    account = db.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
 
     if not account:
         return {"valid": False, "error": "账号不存在", "status": "not_found"}
@@ -636,8 +675,8 @@ def check_account_status(account_id: int) -> dict[str, Any]:
             access_token = refreshed_access_token
 
     if refresh_result.get("error") == "missing_client_credentials":
-        db.execute(
-            "UPDATE accounts SET last_verified_at = ? WHERE id = ?",
+        _execute(db,
+            "UPDATE accounts SET last_verified_at = %s WHERE id = %s",
             (datetime.now().isoformat(), account_id),
         )
         db.commit()
@@ -695,10 +734,10 @@ def check_account_status(account_id: int) -> dict[str, Any]:
             datetime.now().isoformat(),
             account_id,
         )
-        db.execute(
+        _execute(db,
             """UPDATE accounts
-               SET access_token = ?, refresh_token = ?, id_token = ?, token_data = ?, status = ?, last_verified_at = ?
-               WHERE id = ?""",
+               SET access_token = %s, refresh_token = %s, id_token = %s, token_data = %s, status = %s, last_verified_at = %s
+               WHERE id = %s""",
             (
                 token_values[0],
                 token_values[1],
@@ -717,10 +756,10 @@ def check_account_status(account_id: int) -> dict[str, Any]:
             datetime.now().isoformat(),
             account_id,
         )
-        db.execute(
+        _execute(db,
             """UPDATE accounts
-               SET access_token = ?, refresh_token = ?, id_token = ?, token_data = ?, last_verified_at = ?
-               WHERE id = ?""",
+               SET access_token = %s, refresh_token = %s, id_token = %s, token_data = %s, last_verified_at = %s
+               WHERE id = %s""",
             (
                 token_values[0],
                 token_values[1],
@@ -775,12 +814,12 @@ def create_cdks(count: int, bind_account_ids: list[int] = None) -> list[dict]:
     for i, code in enumerate(codes):
         account_id = bind_account_ids[i] if bind_account_ids and i < len(bind_account_ids) else None
         try:
-            db.execute(
-                "INSERT INTO cdks (code, account_id, status) VALUES (?, ?, ?)",
+            _execute(db,
+                "INSERT INTO cdks (code, account_id, status) VALUES (%s, %s, %s)",
                 (code, account_id, "unused"),
             )
             results.append({"code": code, "success": True})
-        except sqlite3.IntegrityError:
+        except pymysql.IntegrityError:
             results.append({"code": code, "success": False, "error": "重复的CDK"})
 
     db.commit()
@@ -823,15 +862,15 @@ def redeem_cdk():
         return jsonify({"success": False, "error": "请输入CDK"}), 400
 
     db = get_db()
-    cdk = db.execute("SELECT * FROM cdks WHERE code = ?", (cdk_code,)).fetchone()
+    cdk = _execute(db, "SELECT * FROM cdks WHERE code = %s", (cdk_code,)).fetchone()
 
     if not cdk:
         return jsonify({"success": False, "error": "CDK不存在"}), 404
 
     if cdk["status"] == "used":
         # 检查是否有订单
-        order = db.execute(
-            "SELECT * FROM orders WHERE cdk_code = ?", (cdk_code,)
+        order = _execute(db,
+            "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)
         ).fetchone()
         if order:
             # 返回订单信息让用户可以查看
@@ -847,7 +886,7 @@ def redeem_cdk():
     account_id = cdk["account_id"]
     if not account_id:
         # 分配一个可用账号
-        available_account = db.execute(
+        available_account = _execute(db,
             "SELECT * FROM accounts WHERE status = 'available' AND id NOT IN "
             "(SELECT account_id FROM orders WHERE status = 'active') LIMIT 1"
         ).fetchone()
@@ -856,7 +895,7 @@ def redeem_cdk():
         account_id = available_account["id"]
 
     # 获取账号信息
-    account = db.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
     if not account:
         return jsonify({"success": False, "error": "绑定的账号不存在"}), 400
 
@@ -868,23 +907,23 @@ def redeem_cdk():
     warranty_expires = datetime.now() + timedelta(days=warranty_days)
 
     # 创建订单
-    db.execute(
+    _execute(db,
         """INSERT INTO orders
            (cdk_code, account_id, user_ip, warranty_days, warranty_expires_at, status)
-           VALUES (?, ?, ?, ?, ?, 'active')""",
+           VALUES (%s, %s, %s, %s, %s, 'active')""",
         (cdk_code, account_id, request.remote_addr, warranty_days, warranty_expires.isoformat()),
     )
 
     # 更新CDK状态
-    db.execute(
-        "UPDATE cdks SET status = 'used', used_at = ?, used_by = ?, account_id = ? WHERE code = ?",
+    _execute(db,
+        "UPDATE cdks SET status = 'used', used_at = %s, used_by = %s, account_id = %s WHERE code = %s",
         (datetime.now().isoformat(), request.remote_addr, account_id, cdk_code),
     )
 
     db.commit()
 
     # 获取订单ID
-    order = db.execute("SELECT * FROM orders WHERE cdk_code = ?", (cdk_code,)).fetchone()
+    order = _execute(db, "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)).fetchone()
 
     # 解析token数据
     token_data = {}
@@ -915,13 +954,13 @@ def redeem_cdk():
 def get_order(order_id):
     """获取订单信息"""
     db = get_db()
-    order = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    order = _execute(db, "SELECT * FROM orders WHERE id = %s", (order_id,)).fetchone()
 
     if not order:
         return jsonify({"success": False, "error": "订单不存在"}), 404
 
-    account = db.execute(
-        "SELECT * FROM accounts WHERE id = ?", (order["account_id"],)
+    account = _execute(db,
+        "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)
     ).fetchone()
 
     token_data = {}
@@ -957,11 +996,11 @@ def get_order(order_id):
 def download_order_json(order_id):
     """下载订单账号JSON，支持重复下载。"""
     db = get_db()
-    order = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    order = _execute(db, "SELECT * FROM orders WHERE id = %s", (order_id,)).fetchone()
     if not order:
         return jsonify({"success": False, "error": "订单不存在"}), 404
 
-    account = db.execute("SELECT * FROM accounts WHERE id = ?", (order["account_id"],)).fetchone()
+    account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)).fetchone()
     if not account:
         return jsonify({"success": False, "error": "账号不存在"}), 404
 
@@ -1007,20 +1046,20 @@ def check_warranty():
         return jsonify({"success": False, "error": "请输入CDK"}), 400
 
     db = get_db()
-    order = db.execute("SELECT * FROM orders WHERE cdk_code = ?", (cdk_code,)).fetchone()
+    order = _execute(db, "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)).fetchone()
 
     if not order:
         return jsonify({"success": False, "error": "订单不存在"}), 404
 
-    account = db.execute(
-        "SELECT * FROM accounts WHERE id = ?", (order["account_id"],)
+    account = _execute(db,
+        "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)
     ).fetchone()
 
     # 检查账号状态
     account_check = check_account_status(order["account_id"]) if account else None
 
     # 检查是否在质保期内
-    warranty_expires = datetime.fromisoformat(order["warranty_expires_at"])
+    warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
     in_warranty = datetime.now() < warranty_expires
 
     # 检查是否可以替换
@@ -1072,13 +1111,13 @@ def request_replacement():
         return jsonify({"success": False, "error": "请输入CDK"}), 400
 
     db = get_db()
-    order = db.execute("SELECT * FROM orders WHERE cdk_code = ?", (cdk_code,)).fetchone()
+    order = _execute(db, "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)).fetchone()
 
     if not order:
         return jsonify({"success": False, "error": "订单不存在"}), 404
 
     # 检查质保期
-    warranty_expires = datetime.fromisoformat(order["warranty_expires_at"])
+    warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
     if datetime.now() >= warranty_expires:
         return jsonify({"success": False, "error": "质保已过期"}), 400
 
@@ -1097,9 +1136,9 @@ def request_replacement():
     old_account_id = order["account_id"]
 
     # 查找新的可用账号
-    new_account = db.execute(
+    new_account = _execute(db,
         """SELECT * FROM accounts WHERE status = 'available'
-           AND id != ? AND id NOT IN (SELECT account_id FROM orders WHERE status = 'active')
+           AND id != %s AND id NOT IN (SELECT account_id FROM orders WHERE status = 'active')
            LIMIT 1""",
         (old_account_id,)
     ).fetchone()
@@ -1110,21 +1149,21 @@ def request_replacement():
     new_account_id = new_account["id"]
 
     # 更新订单
-    db.execute(
-        """UPDATE orders SET account_id = ?, replacement_count = replacement_count + 1
-           WHERE id = ?""",
+    _execute(db,
+        """UPDATE orders SET account_id = %s, replacement_count = replacement_count + 1
+           WHERE id = %s""",
         (new_account_id, order["id"])
     )
 
     # 记录替换历史
-    db.execute(
+    _execute(db,
         """INSERT INTO replacements (order_id, old_account_id, new_account_id, reason)
-           VALUES (?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s)""",
         (order["id"], old_account_id, new_account_id, "账号被封禁")
     )
 
     # 标记旧账号
-    db.execute("UPDATE accounts SET status = 'blocked' WHERE id = ?", (old_account_id,))
+    _execute(db, "UPDATE accounts SET status = 'blocked' WHERE id = %s", (old_account_id,))
 
     db.commit()
 
@@ -1197,24 +1236,24 @@ def admin_stats():
     """获取统计信息"""
     db = get_db()
 
-    total_cdks = db.execute("SELECT COUNT(*) FROM cdks").fetchone()[0]
-    unused_cdks = db.execute("SELECT COUNT(*) FROM cdks WHERE status = 'unused'").fetchone()[0]
-    used_cdks = db.execute("SELECT COUNT(*) FROM cdks WHERE status = 'used'").fetchone()[0]
+    total_cdks = _execute(db, "SELECT COUNT(*) as cnt FROM cdks").fetchone()["cnt"]
+    unused_cdks = _execute(db, "SELECT COUNT(*) as cnt FROM cdks WHERE status = 'unused'").fetchone()["cnt"]
+    used_cdks = _execute(db, "SELECT COUNT(*) as cnt FROM cdks WHERE status = 'used'").fetchone()["cnt"]
 
-    total_accounts = db.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
-    available_accounts = db.execute(
-        "SELECT COUNT(*) FROM accounts WHERE status = 'available'"
-    ).fetchone()[0]
-    blocked_accounts = db.execute(
-        "SELECT COUNT(*) FROM accounts WHERE status = 'blocked'"
-    ).fetchone()[0]
+    total_accounts = _execute(db, "SELECT COUNT(*) as cnt FROM accounts").fetchone()["cnt"]
+    available_accounts = _execute(db,
+        "SELECT COUNT(*) as cnt FROM accounts WHERE status = 'available'"
+    ).fetchone()["cnt"]
+    blocked_accounts = _execute(db,
+        "SELECT COUNT(*) as cnt FROM accounts WHERE status = 'blocked'"
+    ).fetchone()["cnt"]
 
-    total_orders = db.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
-    active_orders = db.execute(
-        "SELECT COUNT(*) FROM orders WHERE status = 'active'"
-    ).fetchone()[0]
+    total_orders = _execute(db, "SELECT COUNT(*) as cnt FROM orders").fetchone()["cnt"]
+    active_orders = _execute(db,
+        "SELECT COUNT(*) as cnt FROM orders WHERE status = 'active'"
+    ).fetchone()["cnt"]
 
-    total_replacements = db.execute("SELECT COUNT(*) FROM replacements").fetchone()[0]
+    total_replacements = _execute(db, "SELECT COUNT(*) as cnt FROM replacements").fetchone()["cnt"]
 
     return jsonify({
         "cdks": {
@@ -1251,19 +1290,19 @@ def admin_cdks():
         query = "SELECT * FROM cdks"
         params = []
         if status:
-            query += " WHERE status = ?"
+            query += " WHERE status = %s"
             params.append(status)
-        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
         params.extend([per_page, offset])
 
-        cdks = db.execute(query, params).fetchall()
+        cdks = _execute(db, query, params).fetchall()
 
-        count_query = "SELECT COUNT(*) FROM cdks"
+        count_query = "SELECT COUNT(*) as cnt FROM cdks"
         if status:
-            count_query += " WHERE status = ?"
-            total = db.execute(count_query, [status]).fetchone()[0]
+            count_query += " WHERE status = %s"
+            total = _execute(db, count_query, [status]).fetchone()["cnt"]
         else:
-            total = db.execute(count_query).fetchone()[0]
+            total = _execute(db, count_query).fetchone()["cnt"]
 
         return jsonify({
             "cdks": [dict(cdk) for cdk in cdks],
@@ -1294,8 +1333,8 @@ def admin_cdks():
         if not cdk_ids:
             return jsonify({"success": False, "error": "请选择要删除的CDK"}), 400
 
-        placeholders = ",".join("?" * len(cdk_ids))
-        db.execute(
+        placeholders = ",".join("%s" for _ in cdk_ids)
+        _execute(db,
             f"DELETE FROM cdks WHERE id IN ({placeholders}) AND status = 'unused'",
             cdk_ids
         )
@@ -1312,7 +1351,7 @@ def bind_cdk_account(cdk_id):
     account_id = data.get("account_id")
 
     db = get_db()
-    cdk = db.execute("SELECT * FROM cdks WHERE id = ?", (cdk_id,)).fetchone()
+    cdk = _execute(db, "SELECT * FROM cdks WHERE id = %s", (cdk_id,)).fetchone()
 
     if not cdk:
         return jsonify({"success": False, "error": "CDK不存在"}), 404
@@ -1321,11 +1360,11 @@ def bind_cdk_account(cdk_id):
         return jsonify({"success": False, "error": "CDK已被使用，无法绑定"}), 400
 
     if account_id:
-        account = db.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+        account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
         if not account:
             return jsonify({"success": False, "error": "账号不存在"}), 404
 
-    db.execute("UPDATE cdks SET account_id = ? WHERE id = ?", (account_id, cdk_id))
+    _execute(db, "UPDATE cdks SET account_id = %s WHERE id = %s", (account_id, cdk_id))
     db.commit()
 
     return jsonify({"success": True, "message": "绑定成功"})
@@ -1347,19 +1386,19 @@ def admin_accounts():
         query = "SELECT id, email, status, last_verified_at, created_at FROM accounts"
         params = []
         if status:
-            query += " WHERE status = ?"
+            query += " WHERE status = %s"
             params.append(status)
-        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
         params.extend([per_page, offset])
 
-        accounts = db.execute(query, params).fetchall()
+        accounts = _execute(db, query, params).fetchall()
 
-        count_query = "SELECT COUNT(*) FROM accounts"
+        count_query = "SELECT COUNT(*) as cnt FROM accounts"
         if status:
-            count_query += " WHERE status = ?"
-            total = db.execute(count_query, [status]).fetchone()[0]
+            count_query += " WHERE status = %s"
+            total = _execute(db, count_query, [status]).fetchone()["cnt"]
         else:
-            total = db.execute(count_query).fetchone()[0]
+            total = _execute(db, count_query).fetchone()["cnt"]
 
         return jsonify({
             "accounts": [dict(acc) for acc in accounts],
@@ -1390,10 +1429,10 @@ def admin_accounts():
             id_token = _pick_first_nonempty(acc.get("id_token"), token_payload.get("id_token"))
 
             try:
-                db.execute(
+                _execute(db,
                     """INSERT INTO accounts
                        (email, access_token, refresh_token, id_token, token_data, status)
-                       VALUES (?, ?, ?, ?, ?, 'available')""",
+                       VALUES (%s, %s, %s, %s, %s, 'available')""",
                     (
                         email,
                         access_token,
@@ -1420,8 +1459,8 @@ def admin_accounts():
         if not account_ids:
             return jsonify({"success": False, "error": "请选择要删除的账号"}), 400
 
-        placeholders = ",".join("?" * len(account_ids))
-        db.execute(f"DELETE FROM accounts WHERE id IN ({placeholders})", account_ids)
+        placeholders = ",".join("%s" for _ in account_ids)
+        _execute(db, f"DELETE FROM accounts WHERE id IN ({placeholders})", account_ids)
         db.commit()
 
         return jsonify({"success": True, "message": "删除成功"})
@@ -1440,7 +1479,7 @@ def verify_account(account_id):
 def verify_all_accounts():
     """批量验证所有账号"""
     db = get_db()
-    accounts = db.execute("SELECT id FROM accounts WHERE status = 'available'").fetchall()
+    accounts = _execute(db, "SELECT id FROM accounts WHERE status = 'available'").fetchall()
 
     results = []
     for acc in accounts:
@@ -1482,19 +1521,19 @@ def admin_orders():
     """
     params = []
     if status:
-        query += " WHERE o.status = ?"
+        query += " WHERE o.status = %s"
         params.append(status)
-    query += " ORDER BY o.created_at DESC LIMIT ? OFFSET ?"
+    query += " ORDER BY o.created_at DESC LIMIT %s OFFSET %s"
     params.extend([per_page, offset])
 
-    orders = db.execute(query, params).fetchall()
+    orders = _execute(db, query, params).fetchall()
 
-    count_query = "SELECT COUNT(*) FROM orders"
+    count_query = "SELECT COUNT(*) as cnt FROM orders"
     if status:
-        count_query += " WHERE status = ?"
-        total = db.execute(count_query, [status]).fetchone()[0]
+        count_query += " WHERE status = %s"
+        total = _execute(db, count_query, [status]).fetchone()["cnt"]
     else:
-        total = db.execute(count_query).fetchone()[0]
+        total = _execute(db, count_query).fetchone()["cnt"]
 
     return jsonify({
         "orders": [dict(order) for order in orders],
@@ -1511,7 +1550,7 @@ def admin_settings():
     db = get_db()
 
     if request.method == "GET":
-        settings = db.execute("SELECT * FROM settings").fetchall()
+        settings = _execute(db, "SELECT * FROM settings").fetchall()
         return jsonify({key: value for key, value in [(s["key"], s["value"]) for s in settings]})
 
     elif request.method == "POST":
@@ -1552,10 +1591,10 @@ def import_from_data():
 
                 db = get_db()
                 try:
-                    db.execute(
+                    _execute(db,
                         """INSERT INTO accounts
                            (email, access_token, refresh_token, id_token, token_data, status)
-                           VALUES (?, ?, ?, ?, ?, 'available')""",
+                           VALUES (%s, %s, %s, %s, %s, 'available')""",
                         (
                             email,
                             tokens.get("access_token"),
@@ -1566,7 +1605,7 @@ def import_from_data():
                     )
                     db.commit()
                     imported.append(email)
-                except sqlite3.IntegrityError:
+                except pymysql.IntegrityError:
                     failed.append({"email": email, "error": "已存在"})
             except Exception as e:
                 failed.append({"file": filename, "error": str(e)})
@@ -1580,9 +1619,10 @@ def import_from_data():
 
 # ==================== 初始化 ====================
 
+# 模块加载时即初始化数据库表结构（兼容 gunicorn/Railway 环境）
+init_db()
 
 if __name__ == "__main__":
-    init_db()
     print(f"Kiro 发卡平台启动中...")
     print(f"访问地址: http://{CONFIG['server']['host']}:{CONFIG['server']['port']}")
     print(f"管理后台: http://{CONFIG['server']['host']}:{CONFIG['server']['port']}/admin")
