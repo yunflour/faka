@@ -571,7 +571,13 @@
             </div>
             <form id="import-account-form">
                 <div class="form-group">
-                    <label>账号数据 (JSON格式，每行一个)</label>
+                    <label>上传JSON文件</label>
+                    <input type="file" id="account-json-file" accept=".json" style="border: none; padding: 5px;">
+                    <p style="font-size: 12px; color: #888; margin-top: 5px;">支持单个账号对象或账号数组的JSON文件</p>
+                </div>
+                <div style="text-align: center; margin: 15px 0; color: #999;">或者</div>
+                <div class="form-group">
+                    <label>粘贴JSON数据 (JSON格式，每行一个)</label>
                     <textarea id="account-import-data" placeholder='{"email":"xxx@example.com","access_token":"xxx","refresh_token":"xxx"}'></textarea>
                 </div>
                 <button type="submit" class="btn btn-primary">导入</button>
@@ -867,19 +873,63 @@
         // 导入账号
         async function importAccounts(e) {
             e.preventDefault();
-            const data = document.getElementById('account-import-data').value.trim();
+
+            const fileInput = document.getElementById('account-json-file');
+            const textData = document.getElementById('account-import-data').value.trim();
+
+            // 优先处理文件上传
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                if (!file.name.endsWith('.json')) {
+                    alert('请上传JSON文件');
+                    return;
+                }
+
+                showLoading();
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch('/api/admin/accounts/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        alert(`导入完成: 成功 ${result.imported.length}, 失败 ${result.failed.length}`);
+                        closeModal('import-account-modal');
+                        fileInput.value = '';
+                        document.getElementById('account-import-data').value = '';
+                        loadAccounts();
+                        loadStats();
+                    } else {
+                        alert('导入失败: ' + result.error);
+                    }
+                } catch (error) {
+                    alert('导入失败: ' + error.message);
+                }
+                hideLoading();
+                return;
+            }
+
+            // 处理文本输入
+            if (!textData) {
+                alert('请选择文件或粘贴JSON数据');
+                return;
+            }
 
             let accounts = [];
             try {
                 // 尝试按行解析
-                const lines = data.split('\n').filter(l => l.trim());
+                const lines = textData.split('\n').filter(l => l.trim());
                 for (const line of lines) {
                     accounts.push(JSON.parse(line));
                 }
             } catch {
                 try {
                     // 尝试整体解析
-                    const parsed = JSON.parse(data);
+                    const parsed = JSON.parse(textData);
                     accounts = Array.isArray(parsed) ? parsed : [parsed];
                 } catch (e) {
                     alert('JSON格式错误: ' + e.message);
@@ -899,6 +949,7 @@
                 if (result.success) {
                     alert(`导入完成: 成功 ${result.imported.length}, 失败 ${result.failed.length}`);
                     closeModal('import-account-modal');
+                    document.getElementById('account-import-data').value = '';
                     loadAccounts();
                     loadStats();
                 }
