@@ -1,0 +1,28 @@
+{
+    "server": {
+        "host": "0.0.0.0",
+        "port": 2158,
+        "debug": true,
+        "secret_key": "1"
+    },
+    "admin": {
+        "username": "admin",
+        "password": "admin123"
+    },
+    "warranty": {
+        "default_days": 7,
+        "max_replacements": 3
+    },
+    "verification": {
+        "idc_region": "us-east-1",
+        "profile_arn": "arn:aws:q::aws:profile/default",
+        "timeout_seconds": 20
+    },
+    "database": {
+        "path": "faka.db"
+    },
+    "cdk": {
+        "length": 16,
+        "prefix": "KIRO"
+    }
+}

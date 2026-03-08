@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 - Kiro发卡平台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f6fa;
+            min-height: 100vh;
+        }
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 250px;
+            height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 20px;
+            color: white;
+        }
+        .sidebar-header {
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 20px;
+        }
+        .sidebar-header h1 {
+            font-size: 20px;
+            margin-bottom: 5px;
+        }
+        .sidebar-header p {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+        .nav-menu {
+            list-style: none;
+        }
+        .nav-menu li {
+            margin-bottom: 5px;
+        }
+        .nav-menu a {
+            display: block;
+            padding: 12px 15px;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        .nav-menu a:hover, .nav-menu a.active {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+        .nav-menu a.active {
+            background: rgba(255,255,255,0.2);
+        }
+        .main-content {
+            margin-left: 250px;
+            padding: 30px;
+        }
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .page-header h2 {
+            color: #333;
+            font-size: 24px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .stat-card h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #333;
+        }
+        .stat-card .sub-stats {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #888;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .card-header h3 {
+            color: #333;
+            font-size: 18px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+            color: white;
+        }
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        }
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+            font-size: 13px;
+        }
+        td {
+            font-size: 14px;
+            color: #333;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-badge.available, .status-badge.unused {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-badge.blocked, .status-badge.used {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status-badge.active {
+            background: #cce5ff;
+            color: #004085;
+        }
+        .status-badge.unknown {
+            background: #eceff1;
+            color: #455a64;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .pagination button {
+            padding: 8px 15px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .pagination button:hover {
+            background: #f0f0f0;
+        }
+        .pagination button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal.show {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-header h3 {
+            font-size: 20px;
+            color: #333;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .tab-section {
+            display: none;
+        }
+        .tab-section.active {
+            display: block;
+        }
+        .filter-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .filter-bar select {
+            padding: 8px 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }
+        .logout-link {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+        }
+        .logout-link a {
+            display: block;
+            padding: 12px;
+            text-align: center;
+            color: rgba(255,255,255,0.6);
+            text-decoration: none;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        .logout-link a:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+        .code-block {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .actions-cell {
+            display: flex;
+            gap: 5px;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+        .loading-overlay.show {
+            display: flex;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Kiro 发卡平台</h1>
+            <p>管理后台</p>
+        </div>
+        <ul class="nav-menu">
+            <li><a href="#" class="active" onclick="showSection('dashboard')">仪表盘</a></li>
+            <li><a href="#" onclick="showSection('cdks')">CDK管理</a></li>
+            <li><a href="#" onclick="showSection('accounts')">账号仓库</a></li>
+            <li><a href="#" onclick="showSection('orders')">订单管理</a></li>
+            <li><a href="#" onclick="showSection('settings')">系统设置</a></li>
+        </ul>
+        <div class="logout-link">
+            <a href="/admin/logout">退出登录</a>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- 仪表盘 -->
+        <div id="section-dashboard" class="tab-section active">
+            <div class="page-header">
+                <h2>仪表盘</h2>
+            </div>
+            <div class="stats-grid" id="stats-container">
+                <!-- 统计数据将通过JS加载 -->
+            </div>
+        </div>
+
+        <!-- CDK管理 -->
+        <div id="section-cdks" class="tab-section">
+            <div class="page-header">
+                <h2>CDK管理</h2>
+                <button class="btn btn-primary" onclick="openModal('create-cdk-modal')">生成CDK</button>
+            </div>
+            <div class="card">
+                <div class="filter-bar">
+                    <select id="cdk-status-filter" onchange="loadCDKs()">
+                        <option value="">全部状态</option>
+                        <option value="unused">未使用</option>
+                        <option value="used">已使用</option>
+                    </select>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSelectedCDKs()">删除选中</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="select-all-cdks" onchange="toggleSelectAll('cdk')"></th>
+                            <th>ID</th>
+                            <th>CDK码</th>
+                            <th>状态</th>
+                            <th>绑定账号</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cdks-table-body">
+                    </tbody>
+                </table>
+                <div class="pagination" id="cdks-pagination"></div>
+            </div>
+        </div>
+
+        <!-- 账号仓库 -->
+        <div id="section-accounts" class="tab-section">
+            <div class="page-header">
+                <h2>账号仓库</h2>
+                <div>
+                    <button class="btn btn-success" onclick="openModal('import-account-modal')">导入账号</button>
+                    <button class="btn btn-primary" onclick="importFromData()">从data导入</button>
+                    <button class="btn btn-secondary" onclick="verifyAllAccounts()">批量校验</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="filter-bar">
+                    <select id="account-status-filter" onchange="loadAccounts()">
+                        <option value="">全部状态</option>
+                        <option value="available">可用</option>
+                        <option value="blocked">已封禁</option>
+                    </select>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSelectedAccounts()">删除选中</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="select-all-accounts" onchange="toggleSelectAll('account')"></th>
+                            <th>ID</th>
+                            <th>邮箱</th>
+                            <th>状态</th>
+                            <th>上次校验</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="accounts-table-body">
+                    </tbody>
+                </table>
+                <div class="pagination" id="accounts-pagination"></div>
+            </div>
+        </div>
+
+        <!-- 订单管理 -->
+        <div id="section-orders" class="tab-section">
+            <div class="page-header">
+                <h2>订单管理</h2>
+            </div>
+            <div class="card">
+                <div class="filter-bar">
+                    <select id="order-status-filter" onchange="loadOrders()">
+                        <option value="">全部状态</option>
+                        <option value="active">有效</option>
+                        <option value="expired">过期</option>
+                    </select>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>CDK</th>
+                            <th>账号邮箱</th>
+                            <th>状态</th>
+                            <th>质保天数</th>
+                            <th>质保到期</th>
+                            <th>替换次数</th>
+                            <th>创建时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-table-body">
+                    </tbody>
+                </table>
+                <div class="pagination" id="orders-pagination"></div>
+            </div>
+        </div>
+
+        <!-- 系统设置 -->
+        <div id="section-settings" class="tab-section">
+            <div class="page-header">
+                <h2>系统设置</h2>
+            </div>
+            <div class="card">
+                <form id="settings-form">
+                    <div class="form-group">
+                        <label>网站标题</label>
+                        <input type="text" id="setting-site_title" placeholder="网站标题">
+                    </div>
+                    <div class="form-group">
+                        <label>网站公告</label>
+                        <textarea id="setting-site_notice" placeholder="网站公告内容"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>默认质保天数</label>
+                        <input type="number" id="setting-warranty_days" min="1" max="365">
+                    </div>
+                    <div class="form-group">
+                        <label>最大替换次数</label>
+                        <input type="number" id="setting-max_replacements" min="0" max="10">
+                    </div>
+                    <button type="submit" class="btn btn-primary">保存设置</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建CDK模态框 -->
+    <div class="modal" id="create-cdk-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>生成CDK</h3>
+                <button class="modal-close" onclick="closeModal('create-cdk-modal')">&times;</button>
+            </div>
+            <form id="create-cdk-form">
+                <div class="form-group">
+                    <label>生成数量</label>
+                    <input type="number" id="cdk-count" value="10" min="1" max="1000">
+                </div>
+                <button type="submit" class="btn btn-primary">生成</button>
+            </form>
+            <div id="cdk-result" style="margin-top:20px;display:none;">
+                <h4>生成结果</h4>
+                <div class="code-block" id="cdk-result-codes"></div>
+                <button class="btn btn-success" style="margin-top:10px" onclick="copyCDKs()">复制全部</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导入账号模态框 -->
+    <div class="modal" id="import-account-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>导入账号</h3>
+                <button class="modal-close" onclick="closeModal('import-account-modal')">&times;</button>
+            </div>
+            <form id="import-account-form">
+                <div class="form-group">
+                    <label>账号数据 (JSON格式，每行一个)</label>
+                    <textarea id="account-import-data" placeholder='{"email":"xxx@example.com","access_token":"xxx","refresh_token":"xxx"}'></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">导入</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 绑定账号模态框 -->
+    <div class="modal" id="bind-account-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>绑定账号</h3>
+                <button class="modal-close" onclick="closeModal('bind-account-modal')">&times;</button>
+            </div>
+            <form id="bind-account-form">
+                <input type="hidden" id="bind-cdk-id">
+                <div class="form-group">
+                    <label>选择账号</label>
+                    <select id="bind-account-select">
+                        <option value="">不绑定 (使用时自动分配)</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">绑定</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div class="loading-overlay" id="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        let currentCDKPage = 1;
+        let currentAccountPage = 1;
+        let currentOrderPage = 1;
+        let selectedCDKs = [];
+        let selectedAccounts = [];
+        let generatedCDKs = [];
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+            loadCDKs();
+            loadAccounts();
+            loadOrders();
+            loadSettings();
+
+            // 表单提交事件
+            document.getElementById('create-cdk-form').onsubmit = createCDKs;
+            document.getElementById('import-account-form').onsubmit = importAccounts;
+            document.getElementById('bind-account-form').onsubmit = bindAccount;
+            document.getElementById('settings-form').onsubmit = saveSettings;
+        });
+
+        function showLoading() {
+            document.getElementById('loading').classList.add('show');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('show');
+        }
+
+        function showSection(sectionName) {
+            document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-menu a').forEach(a => a.classList.remove('active'));
+
+            document.getElementById('section-' + sectionName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.add('show');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('show');
+        }
+
+        // 加载统计数据
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/admin/stats');
+                const data = await response.json();
+
+                document.getElementById('stats-container').innerHTML = `
+                    <div class="stat-card">
+                        <h3>CDK</h3>
+                        <div class="value">${data.cdks.total}</div>
+                        <div class="sub-stats">
+                            未使用: ${data.cdks.unused} | 已使用: ${data.cdks.used}
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>账号</h3>
+                        <div class="value">${data.accounts.total}</div>
+                        <div class="sub-stats">
+                            可用: ${data.accounts.available} | 封禁: ${data.accounts.blocked}
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>订单</h3>
+                        <div class="value">${data.orders.total}</div>
+                        <div class="sub-stats">
+                            有效订单: ${data.orders.active}
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>替换记录</h3>
+                        <div class="value">${data.replacements}</div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('加载统计失败:', error);
+            }
+        }
+
+        // 加载CDK列表
+        async function loadCDKs(page = 1) {
+            currentCDKPage = page;
+            const status = document.getElementById('cdk-status-filter').value;
+
+            try {
+                const response = await fetch(`/api/admin/cdks?page=${page}&status=${status}`);
+                const data = await response.json();
+
+                const tbody = document.getElementById('cdks-table-body');
+                tbody.innerHTML = data.cdks.map(cdk => `
+                    <tr>
+                        <td><input type="checkbox" class="cdk-checkbox" value="${cdk.id}" onchange="updateSelection('cdk')"></td>
+                        <td>${cdk.id}</td>
+                        <td><code>${cdk.code}</code></td>
+                        <td><span class="status-badge ${cdk.status}">${cdk.status === 'unused' ? '未使用' : '已使用'}</span></td>
+                        <td>${cdk.account_id || '-'}</td>
+                        <td>${new Date(cdk.created_at).toLocaleString()}</td>
+                        <td class="actions-cell">
+                            ${cdk.status === 'unused' ? `<button class="btn btn-sm btn-secondary" onclick="openBindModal(${cdk.id})">绑定</button>` : ''}
+                            <button class="btn btn-sm btn-danger" onclick="deleteCDK(${cdk.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                renderPagination('cdks', data.total, data.page, data.per_page);
+            } catch (error) {
+                console.error('加载CDK失败:', error);
+            }
+        }
+
+        // 创建CDK
+        async function createCDKs(e) {
+            e.preventDefault();
+            const count = document.getElementById('cdk-count').value;
+
+            showLoading();
+            try {
+                const response = await fetch('/api/admin/cdks', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({count: parseInt(count)})
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    generatedCDKs = data.created.map(c => c.code);
+                    document.getElementById('cdk-result').style.display = 'block';
+                    document.getElementById('cdk-result-codes').textContent = generatedCDKs.join('\n');
+                    loadCDKs();
+                    loadStats();
+                } else {
+                    alert('生成失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('请求失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        function copyCDKs() {
+            navigator.clipboard.writeText(generatedCDKs.join('\n')).then(() => alert('已复制'));
+        }
+
+        // 删除CDK
+        async function deleteCDK(id) {
+            if (!confirm('确定删除此CDK吗？')) return;
+
+            showLoading();
+            try {
+                await fetch('/api/admin/cdks', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ids: [id]})
+                });
+                loadCDKs();
+                loadStats();
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        function deleteSelectedCDKs() {
+            if (selectedCDKs.length === 0) {
+                alert('请选择要删除的CDK');
+                return;
+            }
+            if (!confirm(`确定删除选中的 ${selectedCDKs.length} 个CDK吗？`)) return;
+
+            showLoading();
+            fetch('/api/admin/cdks', {
+                method: 'DELETE',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ids: selectedCDKs})
+            }).then(() => {
+                selectedCDKs = [];
+                loadCDKs();
+                loadStats();
+                hideLoading();
+            });
+        }
+
+        // 绑定账号
+        async function openBindModal(cdkId) {
+            document.getElementById('bind-cdk-id').value = cdkId;
+
+            // 加载可用账号
+            const response = await fetch('/api/admin/accounts?status=available&per_page=100');
+            const data = await response.json();
+
+            const select = document.getElementById('bind-account-select');
+            select.innerHTML = '<option value="">不绑定 (使用时自动分配)</option>' +
+                data.accounts.map(acc => `<option value="${acc.id}">${acc.email}</option>`).join('');
+
+            openModal('bind-account-modal');
+        }
+
+        async function bindAccount(e) {
+            e.preventDefault();
+            const cdkId = document.getElementById('bind-cdk-id').value;
+            const accountId = document.getElementById('bind-account-select').value;
+
+            showLoading();
+            try {
+                const response = await fetch(`/api/admin/cdks/${cdkId}/bind`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({account_id: accountId ? parseInt(accountId) : null})
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    closeModal('bind-account-modal');
+                    loadCDKs();
+                } else {
+                    alert('绑定失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('请求失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        // 加载账号列表
+        async function loadAccounts(page = 1) {
+            currentAccountPage = page;
+            const status = document.getElementById('account-status-filter').value;
+
+            try {
+                const response = await fetch(`/api/admin/accounts?page=${page}&status=${status}`);
+                const data = await response.json();
+
+                const tbody = document.getElementById('accounts-table-body');
+                tbody.innerHTML = data.accounts.map(acc => `
+                    <tr>
+                        <td><input type="checkbox" class="account-checkbox" value="${acc.id}" onchange="updateSelection('account')"></td>
+                        <td>${acc.id}</td>
+                        <td>${acc.email}</td>
+                        <td><span class="status-badge ${acc.status}">${acc.status === 'available' ? '可用' : (acc.status === 'blocked' ? '封禁' : '未知')}</span></td>
+                        <td>${acc.last_verified_at ? new Date(acc.last_verified_at).toLocaleString() : '-'}</td>
+                        <td>${new Date(acc.created_at).toLocaleString()}</td>
+                        <td class="actions-cell">
+                            <button class="btn btn-sm btn-secondary" onclick="verifyAccount(${acc.id})">校验</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteAccount(${acc.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                renderPagination('accounts', data.total, data.page, data.per_page);
+            } catch (error) {
+                console.error('加载账号失败:', error);
+            }
+        }
+
+        // 导入账号
+        async function importAccounts(e) {
+            e.preventDefault();
+            const data = document.getElementById('account-import-data').value.trim();
+
+            let accounts = [];
+            try {
+                // 尝试按行解析
+                const lines = data.split('\n').filter(l => l.trim());
+                for (const line of lines) {
+                    accounts.push(JSON.parse(line));
+                }
+            } catch {
+                try {
+                    // 尝试整体解析
+                    const parsed = JSON.parse(data);
+                    accounts = Array.isArray(parsed) ? parsed : [parsed];
+                } catch (e) {
+                    alert('JSON格式错误: ' + e.message);
+                    return;
+                }
+            }
+
+            showLoading();
+            try {
+                const response = await fetch('/api/admin/accounts', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({accounts: accounts})
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`导入完成: 成功 ${result.imported.length}, 失败 ${result.failed.length}`);
+                    closeModal('import-account-modal');
+                    loadAccounts();
+                    loadStats();
+                }
+            } catch (error) {
+                alert('导入失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        // 从data目录导入
+        async function importFromData() {
+            if (!confirm('确定从data目录导入账号吗？')) return;
+
+            showLoading();
+            try {
+                const response = await fetch('/api/admin/import-from-data', {method: 'POST'});
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(`导入完成: 成功 ${data.imported.length}, 失败 ${data.failed.length}`);
+                    loadAccounts();
+                    loadStats();
+                } else {
+                    alert('导入失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('请求失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        // 校验账号
+        async function verifyAccount(id) {
+            showLoading();
+            try {
+                const response = await fetch(`/api/admin/accounts/${id}/verify`, {method: 'POST'});
+                const data = await response.json();
+
+                const statusText = data.classification === 'available'
+                    ? '正常可用'
+                    : (data.classification === 'blocked' ? '明确封禁' : '未知(无法明确判断)');
+                alert(`校验结果: ${statusText}`);
+                loadAccounts();
+                loadStats();
+            } catch (error) {
+                alert('校验失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        // 批量校验账号
+        async function verifyAllAccounts() {
+            if (!confirm('确定批量校验所有可用账号吗？这可能需要一些时间。')) return;
+
+            showLoading();
+            try {
+                const response = await fetch('/api/admin/accounts/verify-all', {method: 'POST'});
+                const data = await response.json();
+
+                alert(`校验完成: 共 ${data.total} 个账号, ${data.blocked} 个被封禁, ${data.unknown || 0} 个未知`);
+                loadAccounts();
+                loadStats();
+            } catch (error) {
+                alert('校验失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        // 删除账号
+        async function deleteAccount(id) {
+            if (!confirm('确定删除此账号吗？')) return;
+
+            showLoading();
+            try {
+                await fetch('/api/admin/accounts', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ids: [id]})
+                });
+                loadAccounts();
+                loadStats();
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        function deleteSelectedAccounts() {
+            if (selectedAccounts.length === 0) {
+                alert('请选择要删除的账号');
+                return;
+            }
+            if (!confirm(`确定删除选中的 ${selectedAccounts.length} 个账号吗？`)) return;
+
+            showLoading();
+            fetch('/api/admin/accounts', {
+                method: 'DELETE',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ids: selectedAccounts})
+            }).then(() => {
+                selectedAccounts = [];
+                loadAccounts();
+                loadStats();
+                hideLoading();
+            });
+        }
+
+        // 加载订单列表
+        async function loadOrders(page = 1) {
+            currentOrderPage = page;
+            const status = document.getElementById('order-status-filter').value;
+
+            try {
+                const response = await fetch(`/api/admin/orders?page=${page}&status=${status}`);
+                const data = await response.json();
+
+                const tbody = document.getElementById('orders-table-body');
+                tbody.innerHTML = data.orders.map(order => `
+                    <tr>
+                        <td>${order.id}</td>
+                        <td><code>${order.cdk_code}</code></td>
+                        <td>${order.account_email || '-'}</td>
+                        <td><span class="status-badge ${order.status}">${order.status === 'active' ? '有效' : order.status}</span></td>
+                        <td>${order.warranty_days}天</td>
+                        <td>${new Date(order.warranty_expires_at).toLocaleString()}</td>
+                        <td>${order.replacement_count}</td>
+                        <td>${new Date(order.created_at).toLocaleString()}</td>
+                    </tr>
+                `).join('');
+
+                renderPagination('orders', data.total, data.page, data.per_page);
+            } catch (error) {
+                console.error('加载订单失败:', error);
+            }
+        }
+
+        // 加载设置
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/admin/settings');
+                const data = await response.json();
+
+                document.getElementById('setting-site_title').value = data.site_title || '';
+                document.getElementById('setting-site_notice').value = data.site_notice || '';
+                document.getElementById('setting-warranty_days').value = data.warranty_days || 7;
+                document.getElementById('setting-max_replacements').value = data.max_replacements || 3;
+            } catch (error) {
+                console.error('加载设置失败:', error);
+            }
+        }
+
+        // 保存设置
+        async function saveSettings(e) {
+            e.preventDefault();
+
+            const settings = {
+                site_title: document.getElementById('setting-site_title').value,
+                site_notice: document.getElementById('setting-site_notice').value,
+                warranty_days: document.getElementById('setting-warranty_days').value,
+                max_replacements: document.getElementById('setting-max_replacements').value,
+            };
+
+            showLoading();
+            try {
+                const response = await fetch('/api/admin/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(settings)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('设置已保存');
+                }
+            } catch (error) {
+                alert('保存失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        // 选择相关
+        function toggleSelectAll(type) {
+            const checkboxes = document.querySelectorAll(`.${type}-checkbox`);
+            const selectAll = document.getElementById(`select-all-${type}s`);
+
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+            updateSelection(type);
+        }
+
+        function updateSelection(type) {
+            const checkboxes = document.querySelectorAll(`.${type}-checkbox:checked`);
+            if (type === 'cdk') {
+                selectedCDKs = Array.from(checkboxes).map(cb => parseInt(cb.value));
+            } else {
+                selectedAccounts = Array.from(checkboxes).map(cb => parseInt(cb.value));
+            }
+        }
+
+        // 分页渲染
+        function renderPagination(type, total, currentPage, perPage) {
+            const totalPages = Math.ceil(total / perPage);
+            const container = document.getElementById(`${type}-pagination`);
+
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                    html += `<button class="${i === currentPage ? 'active' : ''}" onclick="load${type.charAt(0).toUpperCase() + type.slice(1)}(${i})">${i}</button>`;
+                } else if (i === currentPage - 3 || i === currentPage + 3) {
+                    html += '<span>...</span>';
+                }
+            }
+            container.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
