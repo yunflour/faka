@@ -42,7 +42,7 @@ def _env_bool(name: str, default: bool) -> bool:
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
-# 默认配置（可被 config.json 和环境变量覆盖）
+# 默认配置（可被环境变量覆盖）
 CONFIG = {
     "server": {
         "host": "0.0.0.0",
@@ -71,17 +71,6 @@ CONFIG = {
         "prefix": "KIRO",
     },
 }
-
-# 兼容现有 config.json（有则加载）
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-if os.path.exists(CONFIG_PATH):
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        file_config = json.load(f)
-    for section, section_value in file_config.items():
-        if isinstance(section_value, dict) and isinstance(CONFIG.get(section), dict):
-            CONFIG[section].update(section_value)
-        else:
-            CONFIG[section] = section_value
 
 # 环境变量覆盖（Railway 部署优先使用这些）
 CONFIG["server"]["host"] = _env_str("HOST", str(CONFIG["server"]["host"]))
