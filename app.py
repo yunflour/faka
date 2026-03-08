@@ -1384,74 +1384,91 @@ def bind_cdk_account(cdk_id):
 @app.route("/api/admin/accounts/upload", methods=["POST"])
 @admin_required
 def upload_accounts_json():
-    """通过上传JSON文件导入账号"""
-    if "file" not in request.files:
+    """通过上传JSON文件批量导入账号"""
+    files = request.files.getlist("files")
+
+    if not files or all(f.filename == "" for f in files):
         return jsonify({"success": False, "error": "未选择文件"}), 400
-
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"success": False, "error": "未选择文件"}), 400
-
-    if not file.filename.endswith(".json"):
-        return jsonify({"success": False, "error": "请上传JSON文件"}), 400
-
-    try:
-        content = file.read().decode("utf-8")
-        data = json.loads(content)
-    except json.JSONDecodeError as e:
-        return jsonify({"success": False, "error": f"JSON解析错误: {str(e)}"}), 400
-    except Exception as e:
-        return jsonify({"success": False, "error": f"读取文件失败: {str(e)}"}), 400
-
-    # 支持单个对象或数组
-    accounts_data = data if isinstance(data, list) else [data]
-
-    if not accounts_data:
-        return jsonify({"success": False, "error": "文件中没有账号数据"}), 400
 
     db = get_db()
-    results = []
-    for acc in accounts_data:
-        email = acc.get("email", "").strip()
-        if not email:
-            # 尝试从其他字段获取邮箱
-            email = acc.get("identity_email", "") or acc.get("username", "")
-            if isinstance(email, str):
-                email = email.strip()
-            if not email:
-                results.append({"email": "(未知)", "success": False, "error": "缺少邮箱"})
-                continue
+    all_results = []
+    file_stats = []
+    total_imported = 0
+    total_failed = 0
 
-        token_payload = build_account_token_payload(acc)
-        token_data = json.dumps(token_payload) if token_payload else None
-
-        access_token = _pick_first_nonempty(acc.get("access_token"), token_payload.get("access_token"))
-        refresh_token = _pick_first_nonempty(acc.get("refresh_token"), token_payload.get("refresh_token"))
-        id_token = _pick_first_nonempty(acc.get("id_token"), token_payload.get("id_token"))
+    for file in files:
+        if file.filename == "":
+            continue
+        if not file.filename.endswith(".json"):
+            file_stats.append({"file": file.filename, "error": "不是JSON文件"})
+            continue
 
         try:
-            _execute(db,
-                """INSERT INTO accounts
-                   (email, access_token, refresh_token, id_token, token_data, status)
-                   VALUES (%s, %s, %s, %s, %s, 'available')""",
-                (
-                    email,
-                    access_token,
-                    refresh_token,
-                    id_token,
-                    token_data,
-                )
-            )
-            results.append({"email": email, "success": True})
+            content = file.read().decode("utf-8")
+            data = json.loads(content)
+        except json.JSONDecodeError as e:
+            file_stats.append({"file": file.filename, "error": f"JSON解析错误: {str(e)}"})
+            continue
         except Exception as e:
-            results.append({"email": email, "success": False, "error": str(e)})
+            file_stats.append({"file": file.filename, "error": f"读取失败: {str(e)}"})
+            continue
+
+        # 支持单个对象或数组
+        accounts_data = data if isinstance(data, list) else [data]
+
+        file_imported = 0
+        file_failed = 0
+        for acc in accounts_data:
+            email = acc.get("email", "").strip()
+            if not email:
+                # 尝试从其他字段获取邮箱
+                email = acc.get("identity_email", "") or acc.get("username", "")
+                if isinstance(email, str):
+                    email = email.strip()
+                if not email:
+                    all_results.append({"file": file.filename, "email": "(未知)", "success": False, "error": "缺少邮箱"})
+                    file_failed += 1
+                    continue
+
+            token_payload = build_account_token_payload(acc)
+            token_data = json.dumps(token_payload) if token_payload else None
+
+            access_token = _pick_first_nonempty(acc.get("access_token"), token_payload.get("access_token"))
+            refresh_token = _pick_first_nonempty(acc.get("refresh_token"), token_payload.get("refresh_token"))
+            id_token = _pick_first_nonempty(acc.get("id_token"), token_payload.get("id_token"))
+
+            try:
+                _execute(db,
+                    """INSERT INTO accounts
+                       (email, access_token, refresh_token, id_token, token_data, status)
+                       VALUES (%s, %s, %s, %s, %s, 'available')""",
+                    (
+                        email,
+                        access_token,
+                        refresh_token,
+                        id_token,
+                        token_data,
+                    )
+                )
+                all_results.append({"file": file.filename, "email": email, "success": True})
+                file_imported += 1
+            except Exception as e:
+                all_results.append({"file": file.filename, "email": email, "success": False, "error": str(e)})
+                file_failed += 1
+
+        file_stats.append({"file": file.filename, "imported": file_imported, "failed": file_failed})
+        total_imported += file_imported
+        total_failed += file_failed
 
     db.commit()
     return jsonify({
         "success": True,
-        "total": len(results),
-        "imported": [r for r in results if r["success"]],
-        "failed": [r for r in results if not r["success"]],
+        "files_processed": len([f for f in file_stats if "error" not in f]),
+        "total_imported": total_imported,
+        "total_failed": total_failed,
+        "file_stats": file_stats,
+        "imported": [r for r in all_results if r["success"]],
+        "failed": [r for r in all_results if not r["success"]],
     })
 
 

@@ -571,9 +571,9 @@
             </div>
             <form id="import-account-form">
                 <div class="form-group">
-                    <label>上传JSON文件</label>
-                    <input type="file" id="account-json-file" accept=".json" style="border: none; padding: 5px;">
-                    <p style="font-size: 12px; color: #888; margin-top: 5px;">支持单个账号对象或账号数组的JSON文件</p>
+                    <label>上传JSON文件 (支持多选)</label>
+                    <input type="file" id="account-json-file" accept=".json" multiple style="border: none; padding: 5px;">
+                    <p style="font-size: 12px; color: #888; margin-top: 5px;">支持批量选择多个JSON文件，每个文件可以是单个账号对象或账号数组</p>
                 </div>
                 <div style="text-align: center; margin: 15px 0; color: #999;">或者</div>
                 <div class="form-group">
@@ -582,6 +582,10 @@
                 </div>
                 <button type="submit" class="btn btn-primary">导入</button>
             </form>
+            <div id="import-result" style="margin-top:20px;display:none;">
+                <h4>导入结果</h4>
+                <div id="import-result-content"></div>
+            </div>
         </div>
     </div>
 
@@ -876,19 +880,23 @@
 
             const fileInput = document.getElementById('account-json-file');
             const textData = document.getElementById('account-import-data').value.trim();
+            const resultDiv = document.getElementById('import-result');
+            const resultContent = document.getElementById('import-result-content');
+            resultDiv.style.display = 'none';
 
             // 优先处理文件上传
             if (fileInput.files.length > 0) {
-                const file = fileInput.files[0];
-                if (!file.name.endsWith('.json')) {
-                    alert('请上传JSON文件');
+                // 过滤出JSON文件
+                const jsonFiles = Array.from(fileInput.files).filter(f => f.name.endsWith('.json'));
+                if (jsonFiles.length === 0) {
+                    alert('请选择JSON文件');
                     return;
                 }
 
                 showLoading();
                 try {
                     const formData = new FormData();
-                    formData.append('file', file);
+                    jsonFiles.forEach(file => formData.append('files', file));
 
                     const response = await fetch('/api/admin/accounts/upload', {
                         method: 'POST',
@@ -897,8 +905,31 @@
                     const result = await response.json();
 
                     if (result.success) {
-                        alert(`导入完成: 成功 ${result.imported.length}, 失败 ${result.failed.length}`);
-                        closeModal('import-account-modal');
+                        // 显示详细结果
+                        let html = `<p><strong>处理文件:</strong> ${result.files_processed} 个</p>`;
+                        html += `<p><strong>成功导入:</strong> ${result.total_imported} 个账号</p>`;
+                        if (result.total_failed > 0) {
+                            html += `<p><strong>导入失败:</strong> ${result.total_failed} 个</p>`;
+                        }
+
+                        // 显示每个文件的统计
+                        if (result.file_stats && result.file_stats.length > 0) {
+                            html += '<details style="margin-top:10px;"><summary style="cursor:pointer;">文件详情</summary>';
+                            html += '<div style="margin-top:10px;font-size:12px;">';
+                            for (const fs of result.file_stats) {
+                                if (fs.error) {
+                                    html += `<p style="color:#721c24;">${fs.file}: ${fs.error}</p>`;
+                                } else {
+                                    html += `<p style="color:#155724;">${fs.file}: 成功 ${fs.imported}, 失败 ${fs.failed}</p>`;
+                                }
+                            }
+                            html += '</div></details>';
+                        }
+
+                        resultContent.innerHTML = html;
+                        resultDiv.style.display = 'block';
+
+                        // 只有关闭模态框时才清空
                         fileInput.value = '';
                         document.getElementById('account-import-data').value = '';
                         loadAccounts();
@@ -947,8 +978,13 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    alert(`导入完成: 成功 ${result.imported.length}, 失败 ${result.failed.length}`);
-                    closeModal('import-account-modal');
+                    let html = `<p><strong>成功导入:</strong> ${result.imported.length} 个账号</p>`;
+                    if (result.failed.length > 0) {
+                        html += `<p><strong>导入失败:</strong> ${result.failed.length} 个</p>`;
+                    }
+                    resultContent.innerHTML = html;
+                    resultDiv.style.display = 'block';
+
                     document.getElementById('account-import-data').value = '';
                     loadAccounts();
                     loadStats();
