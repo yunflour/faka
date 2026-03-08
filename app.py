@@ -125,6 +125,8 @@ def _parse_database_url(url: str) -> dict:
 
 
 _db_params = _parse_database_url(CONFIG["database"]["url"])
+print(f"[DB] DATABASE_URL = {CONFIG['database']['url'][:30]}...", flush=True)
+print(f"[DB] Parsed: host={_db_params['host']}, port={_db_params['port']}, db={_db_params['database']}", flush=True)
 _pool = None
 
 
@@ -1628,8 +1630,21 @@ def import_from_data():
 
 # ==================== 初始化 ====================
 
-# 模块加载时即初始化数据库表结构（兼容 gunicorn/Railway 环境）
-init_db()
+_db_initialized = False
+
+
+@app.before_request
+def _ensure_db_initialized():
+    """首次请求时初始化数据库表结构（延迟到 MySQL 可用时）"""
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            init_db()
+            _db_initialized = True
+            print("[DB] Database initialized successfully", flush=True)
+        except Exception as e:
+            print(f"[DB] init_db failed: {e}", flush=True)
+
 
 if __name__ == "__main__":
     print(f"Kiro 发卡平台启动中...")
