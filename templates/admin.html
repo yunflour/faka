@@ -414,7 +414,7 @@
             </div>
             <div class="card">
                 <div class="filter-bar">
-                    <select id="cdk-status-filter" onchange="loadCDKs()">
+                    <select id="cdk-status-filter" onchange="loadCdks()">
                         <option value="">全部状态</option>
                         <option value="unused">未使用</option>
                         <option value="used">已使用</option>
@@ -625,7 +625,7 @@
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             loadStats();
-            loadCDKs();
+            loadCdks();
             loadAccounts();
             loadOrders();
             loadSettings();
@@ -700,7 +700,7 @@
         }
 
         // 加载CDK列表
-        async function loadCDKs(page = 1) {
+        async function loadCdks(page = 1) {
             currentCDKPage = page;
             const status = document.getElementById('cdk-status-filter').value;
 
@@ -748,7 +748,7 @@
                     generatedCDKs = data.created.map(c => c.code);
                     document.getElementById('cdk-result').style.display = 'block';
                     document.getElementById('cdk-result-codes').textContent = generatedCDKs.join('\n');
-                    loadCDKs();
+                    loadCdks();
                     loadStats();
                 } else {
                     alert('生成失败: ' + data.error);
@@ -774,7 +774,7 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ids: [id]})
                 });
-                loadCDKs();
+                loadCdks();
                 loadStats();
             } catch (error) {
                 alert('删除失败: ' + error.message);
@@ -796,7 +796,7 @@
                 body: JSON.stringify({ids: selectedCDKs})
             }).then(() => {
                 selectedCDKs = [];
-                loadCDKs();
+                loadCdks();
                 loadStats();
                 hideLoading();
             });
@@ -833,7 +833,7 @@
 
                 if (data.success) {
                     closeModal('bind-account-modal');
-                    loadCDKs();
+                    loadCdks();
                 } else {
                     alert('绑定失败: ' + data.error);
                 }
