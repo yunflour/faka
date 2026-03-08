@@ -657,9 +657,10 @@ def classify_credential_verification(detail: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def check_account_status(account_id: int) -> dict[str, Any]:
+def check_account_status(account_id: int, db=None) -> dict[str, Any]:
     """检查账号状态"""
-    db = get_db()
+    if db is None:
+        db = get_db()
     account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
 
     if not account:
@@ -1583,13 +1584,19 @@ def verify_all_accounts():
     data = request.get_json() or {}
     only_unknown = data.get("only_unknown", False)
 
-    db = get_db()
-    if only_unknown:
-        accounts = _execute(db, "SELECT id, email FROM accounts WHERE status = 'unknown'").fetchall()
-    else:
-        accounts = _execute(db, "SELECT id, email FROM accounts WHERE status IN ('available', 'unknown')").fetchall()
+    # 使用连接池直接获取连接查询账号列表
+    db = _get_pool().connection()
+    try:
+        if only_unknown:
+            accounts = _execute(db, "SELECT id, email FROM accounts WHERE status = 'unknown'").fetchall()
+        else:
+            accounts = _execute(db, "SELECT id, email FROM accounts WHERE status IN ('available', 'unknown')").fetchall()
+        # 转换为列表，因为连接会在 generator 外关闭
+        accounts_list = [dict(acc) for acc in accounts]
+    finally:
+        db.close()
 
-    total = len(accounts)
+    total = len(accounts_list)
 
     def generate():
         if total == 0:
@@ -1600,8 +1607,16 @@ def verify_all_accounts():
         available_count = 0
         unknown_count = 0
 
-        for i, acc in enumerate(accounts, 1):
-            result = check_account_status(acc["id"])
+        for i, acc in enumerate(accounts_list, 1):
+            # 每次迭代获取新的数据库连接
+            db = _get_pool().connection()
+            try:
+                result = check_account_status(acc["id"], db)
+            except Exception as e:
+                result = {"classification": "unknown", "error": str(e)}
+            finally:
+                db.close()
+
             classification = result.get("classification", "unknown")
 
             if classification == "blocked":
