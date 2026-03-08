@@ -1,0 +1,606 @@
+2026-03-08T11:12:56.608109460Z [inf]  Starting Container
+2026-03-08T11:12:57.683065632Z [err]  Traceback (most recent call last):
+2026-03-08T11:12:57.683069742Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:12:57.683073032Z [err]      _pool = PooledDB(
+2026-03-08T11:12:57.683076462Z [err]          creator=pymysql,
+2026-03-08T11:12:57.683253810Z [err]  Traceback (most recent call last):
+2026-03-08T11:12:57.683258600Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:12:57.683262850Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:12:57.683267560Z [err]  IndexError: pop from empty list
+2026-03-08T11:12:57.683272440Z [err]  
+2026-03-08T11:12:57.683277240Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:12:57.683282070Z [err]  
+2026-03-08T11:12:57.683287080Z [err]  Traceback (most recent call last):
+2026-03-08T11:12:57.683291820Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:12:57.683296560Z [err]      sock = socket.create_connection(
+2026-03-08T11:12:57.683301340Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:12:57.683305890Z [err]      )
+2026-03-08T11:12:57.683310829Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:12:57.683319909Z [err]      raise exceptions[0]
+2026-03-08T11:12:57.683325079Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:12:57.683329629Z [err]      sock.connect(sa)
+2026-03-08T11:12:57.683333969Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:12:57.683338829Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:12:57.683343709Z [err]  
+2026-03-08T11:12:57.683349469Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:12:57.683354429Z [err]  
+2026-03-08T11:12:57.685271612Z [err]      ...<11 lines>...
+2026-03-08T11:12:57.685277131Z [err]          autocommit=False,
+2026-03-08T11:12:57.685282731Z [err]      )
+2026-03-08T11:12:57.685288111Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:12:57.685294381Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:12:57.685299531Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:12:57.685304381Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:12:57.685309111Z [err]      return self.connection(False)
+2026-03-08T11:12:57.685314561Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:12:57.685320331Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:12:57.685325491Z [err]      con = self.steady_connection()
+2026-03-08T11:12:57.685331161Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:12:57.685337941Z [err]      return connect(
+2026-03-08T11:12:57.685345091Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:12:57.685351721Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:12:57.685357501Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:12:57.685362021Z [err]      return SteadyDBConnection(
+2026-03-08T11:12:57.685367171Z [err]          creator, maxusage, setsession,
+2026-03-08T11:12:57.685372031Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:12:57.685377531Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:12:57.685382300Z [err]      self._store(self._create())
+2026-03-08T11:12:57.686092135Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:12:57.686096935Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:12:57.686100545Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:12:57.686104454Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:12:57.686108004Z [err]      self.connect()
+2026-03-08T11:12:57.686111374Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:12:57.686114764Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:12:57.686117844Z [err]      raise exc
+2026-03-08T11:12:57.686121154Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:12:58.010082339Z [err]  Traceback (most recent call last):
+2026-03-08T11:12:58.010085119Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:12:58.010087339Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:12:58.010089679Z [err]  IndexError: pop from empty list
+2026-03-08T11:12:58.010091849Z [err]  
+2026-03-08T11:12:58.010094119Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:12:58.010096939Z [err]  
+2026-03-08T11:12:58.010099109Z [err]  Traceback (most recent call last):
+2026-03-08T11:12:58.010101449Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:12:58.010103839Z [err]      sock = socket.create_connection(
+2026-03-08T11:12:58.010106179Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:12:58.010108669Z [err]      )
+2026-03-08T11:12:58.010113119Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:12:58.010115329Z [err]      raise exceptions[0]
+2026-03-08T11:12:58.010117479Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:12:58.010119699Z [err]      sock.connect(sa)
+2026-03-08T11:12:58.010122019Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:12:58.010125499Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:12:58.010128279Z [err]  
+2026-03-08T11:12:58.010130709Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:12:58.010133159Z [err]  
+2026-03-08T11:12:58.010136169Z [err]  Traceback (most recent call last):
+2026-03-08T11:12:58.010138729Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:12:58.010141089Z [err]      _pool = PooledDB(
+2026-03-08T11:12:58.010143559Z [err]          creator=pymysql,
+2026-03-08T11:12:58.012744076Z [err]      ...<11 lines>...
+2026-03-08T11:12:58.012757976Z [err]          autocommit=False,
+2026-03-08T11:12:58.012764885Z [err]      )
+2026-03-08T11:12:58.012770615Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:12:58.012776965Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:12:58.012782015Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:12:58.012786965Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:12:58.012792785Z [err]      return self.connection(False)
+2026-03-08T11:12:58.012797675Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:12:58.012804245Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:12:58.012808335Z [err]      con = self.steady_connection()
+2026-03-08T11:12:58.012816665Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:12:58.012821045Z [err]      return connect(
+2026-03-08T11:12:58.012825095Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:12:58.012829275Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:12:58.012834825Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:12:58.012839735Z [err]      return SteadyDBConnection(
+2026-03-08T11:12:58.012844695Z [err]          creator, maxusage, setsession,
+2026-03-08T11:12:58.012849725Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:12:58.012854055Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:12:58.012858965Z [err]      self._store(self._create())
+2026-03-08T11:12:58.014267942Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:12:58.014272612Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:12:58.014277812Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:12:58.014282592Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:12:58.014286942Z [err]      self.connect()
+2026-03-08T11:12:58.014292402Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:12:58.014296972Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:12:58.014301102Z [err]      raise exc
+2026-03-08T11:12:58.014305732Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:12:59.508642551Z [err]  
+2026-03-08T11:12:59.508646131Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:12:59.508649771Z [err]  Traceback (most recent call last):
+2026-03-08T11:12:59.508650811Z [err]      _pool = PooledDB(
+2026-03-08T11:12:59.508654201Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:12:59.508655231Z [err]          creator=pymysql,
+2026-03-08T11:12:59.508662441Z [err]  
+2026-03-08T11:12:59.508665771Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:12:59.508668381Z [err]  
+2026-03-08T11:12:59.508671531Z [err]  Traceback (most recent call last):
+2026-03-08T11:12:59.508674421Z [err]  Traceback (most recent call last):
+2026-03-08T11:12:59.508679061Z [err]      sock = socket.create_connection(
+2026-03-08T11:12:59.508679371Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:12:59.508688331Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:12:59.508692021Z [err]      )
+2026-03-08T11:12:59.508695661Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:12:59.508696851Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:12:59.508701621Z [err]  IndexError: pop from empty list
+2026-03-08T11:12:59.508702321Z [err]      raise exceptions[0]
+2026-03-08T11:12:59.508704841Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:12:59.508705681Z [err]  
+2026-03-08T11:12:59.508709821Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:12:59.508735700Z [err]      sock.connect(sa)
+2026-03-08T11:12:59.508744810Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:12:59.508752730Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:12:59.509058487Z [err]      ...<11 lines>...
+2026-03-08T11:12:59.509068647Z [err]          autocommit=False,
+2026-03-08T11:12:59.509075747Z [err]      )
+2026-03-08T11:12:59.509079897Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:12:59.509084127Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:12:59.509088007Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:12:59.509091737Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:12:59.509094937Z [err]      return self.connection(False)
+2026-03-08T11:12:59.509097847Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:12:59.509101667Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:12:59.509105417Z [err]      con = self.steady_connection()
+2026-03-08T11:12:59.509109837Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:12:59.509113267Z [err]      return connect(
+2026-03-08T11:12:59.509116547Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:12:59.509119977Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:12:59.509123537Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:12:59.509127437Z [err]      return SteadyDBConnection(
+2026-03-08T11:12:59.509131397Z [err]          creator, maxusage, setsession,
+2026-03-08T11:12:59.509135327Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:12:59.509139417Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:12:59.509142547Z [err]      self._store(self._create())
+2026-03-08T11:12:59.510232967Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:12:59.510238787Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:12:59.510241497Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:12:59.510244317Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:12:59.510247347Z [err]      self.connect()
+2026-03-08T11:12:59.510251037Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:12:59.510253767Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:12:59.510256177Z [err]      raise exc
+2026-03-08T11:12:59.510258887Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:13:00.624491569Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:00.624495649Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:13:00.624499319Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:13:00.624503979Z [err]  IndexError: pop from empty list
+2026-03-08T11:13:00.624508299Z [err]  
+2026-03-08T11:13:00.624512849Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:00.624518219Z [err]  
+2026-03-08T11:13:00.624522349Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:00.624525609Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:13:00.624529379Z [err]      sock = socket.create_connection(
+2026-03-08T11:13:00.624532999Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:13:00.624536859Z [err]      )
+2026-03-08T11:13:00.624540589Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:13:00.624546378Z [err]      raise exceptions[0]
+2026-03-08T11:13:00.624550288Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:13:00.624554948Z [err]      sock.connect(sa)
+2026-03-08T11:13:00.624559508Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:13:00.624563308Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:13:00.624566818Z [err]  
+2026-03-08T11:13:00.624570038Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:00.624573428Z [err]  
+2026-03-08T11:13:00.624577018Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:00.624580578Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:13:00.624584108Z [err]      _pool = PooledDB(
+2026-03-08T11:13:00.624588338Z [err]          creator=pymysql,
+2026-03-08T11:13:00.624975344Z [err]      return SteadyDBConnection(
+2026-03-08T11:13:00.624984014Z [err]      ...<11 lines>...
+2026-03-08T11:13:00.624984594Z [err]          creator, maxusage, setsession,
+2026-03-08T11:13:00.624991634Z [err]          autocommit=False,
+2026-03-08T11:13:00.624992534Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:13:00.624999654Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:13:00.624999964Z [err]      )
+2026-03-08T11:13:00.625006024Z [err]      self._store(self._create())
+2026-03-08T11:13:00.625008424Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:13:00.625010754Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:13:00.625012904Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:13:00.625024084Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:13:00.625033134Z [err]      return self.connection(False)
+2026-03-08T11:13:00.625037424Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:13:00.625041584Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:13:00.625045794Z [err]      con = self.steady_connection()
+2026-03-08T11:13:00.625050294Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:13:00.625053824Z [err]      return connect(
+2026-03-08T11:13:00.625057294Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:13:00.625060913Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:13:00.625068793Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:13:00.626665890Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:13:00.626670660Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:13:00.626673200Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:13:00.626675720Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:13:00.626678770Z [err]      self.connect()
+2026-03-08T11:13:00.626681480Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:13:00.626684950Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:13:00.626687370Z [err]      raise exc
+2026-03-08T11:13:00.626689740Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:13:01.633815942Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:13:01.633820552Z [err]  
+2026-03-08T11:13:01.633824842Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:01.633831882Z [err]  
+2026-03-08T11:13:01.633836152Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:01.633840092Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:13:01.633843672Z [err]      _pool = PooledDB(
+2026-03-08T11:13:01.633848091Z [err]          creator=pymysql,
+2026-03-08T11:13:01.633979070Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:01.633982490Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:13:01.633986720Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:13:01.633989840Z [err]  IndexError: pop from empty list
+2026-03-08T11:13:01.633993810Z [err]  
+2026-03-08T11:13:01.633997490Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:01.634002710Z [err]  
+2026-03-08T11:13:01.634005760Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:01.634008860Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:13:01.634011980Z [err]      sock = socket.create_connection(
+2026-03-08T11:13:01.634015130Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:13:01.634018270Z [err]      )
+2026-03-08T11:13:01.634021060Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:13:01.634024350Z [err]      raise exceptions[0]
+2026-03-08T11:13:01.634027600Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:13:01.634032250Z [err]      sock.connect(sa)
+2026-03-08T11:13:01.634035640Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:13:01.635159550Z [err]      ...<11 lines>...
+2026-03-08T11:13:01.635162700Z [err]          autocommit=False,
+2026-03-08T11:13:01.635166440Z [err]      )
+2026-03-08T11:13:01.635169890Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:13:01.635173310Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:13:01.635176730Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:13:01.635180960Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:13:01.635184170Z [err]      return self.connection(False)
+2026-03-08T11:13:01.635187400Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:13:01.635191209Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:13:01.635194609Z [err]      con = self.steady_connection()
+2026-03-08T11:13:01.635197479Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:13:01.635200689Z [err]      return connect(
+2026-03-08T11:13:01.635204209Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:13:01.635211669Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:13:01.635215419Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:13:01.635218439Z [err]      return SteadyDBConnection(
+2026-03-08T11:13:01.635221669Z [err]          creator, maxusage, setsession,
+2026-03-08T11:13:01.635224739Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:13:01.635228499Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:13:01.635231839Z [err]      self._store(self._create())
+2026-03-08T11:13:01.635668886Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:13:01.635671746Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:13:01.635674416Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:13:01.635677406Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:13:01.635680096Z [err]      self.connect()
+2026-03-08T11:13:01.635683396Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:13:01.635686966Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:13:01.635689756Z [err]      raise exc
+2026-03-08T11:13:01.635692466Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:13:02.832738853Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:02.832746173Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:13:02.832751183Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:13:02.832755352Z [err]  IndexError: pop from empty list
+2026-03-08T11:13:02.832759162Z [err]  
+2026-03-08T11:13:02.832762662Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:02.832766322Z [err]  
+2026-03-08T11:13:02.832770212Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:02.832774202Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:13:02.832777592Z [err]      sock = socket.create_connection(
+2026-03-08T11:13:02.832781092Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:13:02.832785012Z [err]      )
+2026-03-08T11:13:02.832789052Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:13:02.832792642Z [err]      raise exceptions[0]
+2026-03-08T11:13:02.832796342Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:13:02.832799962Z [err]      sock.connect(sa)
+2026-03-08T11:13:02.832803582Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:13:02.832807422Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:13:02.832810832Z [err]  
+2026-03-08T11:13:02.832815022Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:02.832818462Z [err]  
+2026-03-08T11:13:02.832822262Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:02.832825482Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:13:02.832829672Z [err]      _pool = PooledDB(
+2026-03-08T11:13:02.832833843Z [err]          creator=pymysql,
+2026-03-08T11:13:02.834287990Z [err]      self._store(self._create())
+2026-03-08T11:13:02.834299470Z [err]      ...<11 lines>...
+2026-03-08T11:13:02.834304020Z [err]          autocommit=False,
+2026-03-08T11:13:02.834307850Z [err]      )
+2026-03-08T11:13:02.834311509Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:13:02.834316589Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:13:02.834320999Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:13:02.834325069Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:13:02.834328579Z [err]      return self.connection(False)
+2026-03-08T11:13:02.834332139Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:13:02.834336169Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:13:02.834339869Z [err]      con = self.steady_connection()
+2026-03-08T11:13:02.834345369Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:13:02.834348419Z [err]      return connect(
+2026-03-08T11:13:02.834351279Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:13:02.834354619Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:13:02.834357719Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:13:02.834361319Z [err]      return SteadyDBConnection(
+2026-03-08T11:13:02.834365319Z [err]          creator, maxusage, setsession,
+2026-03-08T11:13:02.834368839Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:13:02.834372499Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:13:02.834873064Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:13:02.834875924Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:13:02.834878264Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:13:02.834880934Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:13:02.834883514Z [err]      self.connect()
+2026-03-08T11:13:02.834886004Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:13:02.834888154Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:13:02.834891124Z [err]      raise exc
+2026-03-08T11:13:02.834894014Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:13:04.033482608Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:04.033485468Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:13:04.033488198Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:13:04.033491228Z [err]  IndexError: pop from empty list
+2026-03-08T11:13:04.033494618Z [err]  
+2026-03-08T11:13:04.033497748Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:04.033500648Z [err]  
+2026-03-08T11:13:04.033503688Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:04.035515391Z [err]      _pool = PooledDB(
+2026-03-08T11:13:04.035517131Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:13:04.035523271Z [err]      sock = socket.create_connection(
+2026-03-08T11:13:04.035528660Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:13:04.035528970Z [err]          creator=pymysql,
+2026-03-08T11:13:04.035534000Z [err]      )
+2026-03-08T11:13:04.035538930Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:13:04.035539540Z [err]      ...<11 lines>...
+2026-03-08T11:13:04.035543740Z [err]      raise exceptions[0]
+2026-03-08T11:13:04.035546380Z [err]          autocommit=False,
+2026-03-08T11:13:04.035549080Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:13:04.035555250Z [err]      sock.connect(sa)
+2026-03-08T11:13:04.035555450Z [err]      )
+2026-03-08T11:13:04.035559920Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:13:04.035563160Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:13:04.035567140Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:13:04.035570730Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:13:04.035573150Z [err]  
+2026-03-08T11:13:04.035579320Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:04.035585910Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:13:04.035593500Z [err]  
+2026-03-08T11:13:04.035593660Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:13:04.035598340Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:04.035601330Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:13:04.038277386Z [err]      return self.connection(False)
+2026-03-08T11:13:04.038282036Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:13:04.038284646Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:13:04.038287626Z [err]      con = self.steady_connection()
+2026-03-08T11:13:04.038290666Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:13:04.038293896Z [err]      return connect(
+2026-03-08T11:13:04.038296846Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:13:04.038299526Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:13:04.038302356Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:13:04.038305856Z [err]      return SteadyDBConnection(
+2026-03-08T11:13:04.038308376Z [err]          creator, maxusage, setsession,
+2026-03-08T11:13:04.038311066Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:13:04.038313616Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:13:04.038316086Z [err]      self._store(self._create())
+2026-03-08T11:13:04.038318826Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:13:04.038321576Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:13:04.038324926Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:13:04.038327686Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:13:04.038330036Z [err]      self.connect()
+2026-03-08T11:13:04.038332926Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:13:04.038335965Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:13:04.040009221Z [err]      raise exc
+2026-03-08T11:13:04.040012480Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:13:05.707321365Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:05.707324965Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:13:05.707328185Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:13:05.707331415Z [err]  IndexError: pop from empty list
+2026-03-08T11:13:05.707335915Z [err]  
+2026-03-08T11:13:05.707338985Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:05.707344165Z [err]  
+2026-03-08T11:13:05.707347865Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:05.707350945Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:13:05.707355255Z [err]      sock = socket.create_connection(
+2026-03-08T11:13:05.707358455Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:13:05.707361774Z [err]      )
+2026-03-08T11:13:05.707364764Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:13:05.707368524Z [err]      raise exceptions[0]
+2026-03-08T11:13:05.707371434Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:13:05.707374144Z [err]      sock.connect(sa)
+2026-03-08T11:13:05.707376724Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:13:05.707380494Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:13:05.707383684Z [err]  
+2026-03-08T11:13:05.707391534Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:05.707395634Z [err]  
+2026-03-08T11:13:05.707398784Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:05.707401614Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:13:05.707404624Z [err]      _pool = PooledDB(
+2026-03-08T11:13:05.707407914Z [err]          creator=pymysql,
+2026-03-08T11:13:05.707989679Z [err]      ...<11 lines>...
+2026-03-08T11:13:05.707993839Z [err]          autocommit=False,
+2026-03-08T11:13:05.707997519Z [err]      )
+2026-03-08T11:13:05.708001309Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:13:05.708005539Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:13:05.708011059Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:13:05.708014869Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:13:05.708019699Z [err]      return self.connection(False)
+2026-03-08T11:13:05.708023779Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:13:05.708027409Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:13:05.708031929Z [err]      con = self.steady_connection()
+2026-03-08T11:13:05.708035779Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:13:05.708039709Z [err]      return connect(
+2026-03-08T11:13:05.708043249Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:13:05.708049479Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:13:05.708061999Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:13:05.708065199Z [err]      return SteadyDBConnection(
+2026-03-08T11:13:05.708068729Z [err]          creator, maxusage, setsession,
+2026-03-08T11:13:05.708072039Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:13:05.708076769Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:13:05.708081029Z [err]      self._store(self._create())
+2026-03-08T11:13:05.709670714Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:13:05.709673384Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:13:05.709675844Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:13:05.709678234Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:13:05.709681534Z [err]      self.connect()
+2026-03-08T11:13:05.709684414Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:13:05.709687334Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:13:05.709690284Z [err]      raise exc
+2026-03-08T11:13:05.709692804Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:13:06.634471838Z [err]  
+2026-03-08T11:13:06.634483669Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:06.634489748Z [err]  
+2026-03-08T11:13:06.634493838Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:06.634503778Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:13:06.634508088Z [err]      _pool = PooledDB(
+2026-03-08T11:13:06.634512078Z [err]          creator=pymysql,
+2026-03-08T11:13:06.634600037Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:06.634603597Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:13:06.634606797Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:13:06.634610967Z [err]      ...<11 lines>...
+2026-03-08T11:13:06.634613127Z [err]  IndexError: pop from empty list
+2026-03-08T11:13:06.634617497Z [err]          autocommit=False,
+2026-03-08T11:13:06.634620167Z [err]  
+2026-03-08T11:13:06.634623937Z [err]      )
+2026-03-08T11:13:06.634627297Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:06.634630327Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:13:06.634635487Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:13:06.634635777Z [err]  
+2026-03-08T11:13:06.634641297Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:13:06.634643487Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:06.634647667Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:13:06.634649827Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:13:06.634652767Z [err]      return self.connection(False)
+2026-03-08T11:13:06.634656117Z [err]      sock = socket.create_connection(
+2026-03-08T11:13:06.634658417Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:13:06.634662307Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:13:06.634665477Z [err]      con = self.steady_connection()
+2026-03-08T11:13:06.634670357Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:13:06.634670577Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:13:06.634676747Z [err]      return connect(
+2026-03-08T11:13:06.634676957Z [err]      )
+2026-03-08T11:13:06.634683197Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:13:06.634683977Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:13:06.634688917Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:13:06.634692637Z [err]      raise exceptions[0]
+2026-03-08T11:13:06.634694817Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:13:06.634700126Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:13:06.634700306Z [err]      return SteadyDBConnection(
+2026-03-08T11:13:06.634706606Z [err]          creator, maxusage, setsession,
+2026-03-08T11:13:06.634707396Z [err]      sock.connect(sa)
+2026-03-08T11:13:06.634711306Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:13:06.634716356Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:13:06.634716776Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:13:06.634722186Z [err]      self._store(self._create())
+2026-03-08T11:13:06.634724086Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:13:06.636701858Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:13:06.636704588Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:13:06.636707008Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:13:06.636709588Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:13:06.636712358Z [err]      self.connect()
+2026-03-08T11:13:06.636714738Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:13:06.636718718Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:13:06.636721398Z [err]      raise exc
+2026-03-08T11:13:06.636723658Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:13:07.755149964Z [err]      _pool = PooledDB(
+2026-03-08T11:13:07.755161653Z [err]          creator=pymysql,
+2026-03-08T11:13:07.755200383Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:07.755204003Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:13:07.755208803Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:13:07.755212793Z [err]  IndexError: pop from empty list
+2026-03-08T11:13:07.755216944Z [err]  
+2026-03-08T11:13:07.755220484Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:07.755224254Z [err]  
+2026-03-08T11:13:07.755229524Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:07.755234854Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:13:07.755238764Z [err]      sock = socket.create_connection(
+2026-03-08T11:13:07.755244334Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:13:07.755248324Z [err]      )
+2026-03-08T11:13:07.755251964Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:13:07.755256674Z [err]      raise exceptions[0]
+2026-03-08T11:13:07.755260124Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:13:07.755264174Z [err]      sock.connect(sa)
+2026-03-08T11:13:07.755267493Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:13:07.755272983Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:13:07.755278143Z [err]  
+2026-03-08T11:13:07.755282233Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:07.755285963Z [err]  
+2026-03-08T11:13:07.755303533Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:07.755307293Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:13:07.756598712Z [err]          creator, maxusage, setsession,
+2026-03-08T11:13:07.756603342Z [err]      ...<11 lines>...
+2026-03-08T11:13:07.756605012Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:13:07.756611911Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:13:07.756616771Z [err]          autocommit=False,
+2026-03-08T11:13:07.756619011Z [err]      self._store(self._create())
+2026-03-08T11:13:07.756627461Z [err]      )
+2026-03-08T11:13:07.756631141Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:13:07.756633221Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:13:07.756639371Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:13:07.756646591Z [err]      con = self.steady_connection()
+2026-03-08T11:13:07.756647021Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:13:07.756653121Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:13:07.756655611Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:13:07.756658591Z [err]      return self.connection(False)
+2026-03-08T11:13:07.756662751Z [err]      return connect(
+2026-03-08T11:13:07.756667341Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:13:07.756669661Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:13:07.756676211Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:13:07.756680331Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:13:07.756684881Z [err]      return SteadyDBConnection(
+2026-03-08T11:13:07.757804280Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:13:07.757809040Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:13:07.757812330Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:13:07.757816321Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:13:07.757820261Z [err]      self.connect()
+2026-03-08T11:13:07.757823251Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:13:07.757825921Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:13:07.757828691Z [err]      raise exc
+2026-03-08T11:13:07.757832321Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")
+2026-03-08T11:13:09.123071347Z [err]      raise exceptions[0]
+2026-03-08T11:13:09.123080217Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 849, in create_connection
+2026-03-08T11:13:09.123087367Z [err]      sock.connect(sa)
+2026-03-08T11:13:09.123089717Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:09.123093507Z [err]      ~~~~~~~~~~~~^^^^
+2026-03-08T11:13:09.123098347Z [err]  ConnectionRefusedError: [Errno 111] Connection refused
+2026-03-08T11:13:09.123101107Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 339, in connection
+2026-03-08T11:13:09.123106897Z [err]  
+2026-03-08T11:13:09.123109357Z [err]      con = self._idle_cache.pop(0)
+2026-03-08T11:13:09.123113817Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:09.123116847Z [err]  IndexError: pop from empty list
+2026-03-08T11:13:09.123119727Z [err]  
+2026-03-08T11:13:09.123124506Z [err]  
+2026-03-08T11:13:09.123125556Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:09.123133186Z [err]  During handling of the above exception, another exception occurred:
+2026-03-08T11:13:09.123133656Z [err]    File "/app/app.py", line 127, in <module>
+2026-03-08T11:13:09.123138106Z [err]      _pool = PooledDB(
+2026-03-08T11:13:09.123144616Z [err]  
+2026-03-08T11:13:09.123144766Z [err]          creator=pymysql,
+2026-03-08T11:13:09.123149706Z [err]  Traceback (most recent call last):
+2026-03-08T11:13:09.123153206Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 661, in connect
+2026-03-08T11:13:09.123156396Z [err]      sock = socket.create_connection(
+2026-03-08T11:13:09.123159946Z [err]          (self.host, self.port), self.connect_timeout, **kwargs
+2026-03-08T11:13:09.123163406Z [err]      )
+2026-03-08T11:13:09.123167426Z [err]    File "/mise/installs/python/3.13.12/lib/python3.13/socket.py", line 864, in create_connection
+2026-03-08T11:13:09.124750192Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 138, in connect
+2026-03-08T11:13:09.124756422Z [err]      return SteadyDBConnection(
+2026-03-08T11:13:09.124760052Z [err]      ...<11 lines>...
+2026-03-08T11:13:09.124762132Z [err]          creator, maxusage, setsession,
+2026-03-08T11:13:09.124764512Z [err]          autocommit=False,
+2026-03-08T11:13:09.124766242Z [err]          failures, ping, closeable, *args, **kwargs)
+2026-03-08T11:13:09.124768372Z [err]      )
+2026-03-08T11:13:09.124770172Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 197, in __init__
+2026-03-08T11:13:09.124772452Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 286, in __init__
+2026-03-08T11:13:09.124774592Z [err]      self._store(self._create())
+2026-03-08T11:13:09.124777032Z [err]      idle = [self.dedicated_connection() for i in range(mincached)]
+2026-03-08T11:13:09.124780171Z [err]              ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+2026-03-08T11:13:09.124786821Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 350, in dedicated_connection
+2026-03-08T11:13:09.124790051Z [err]      return self.connection(False)
+2026-03-08T11:13:09.124793171Z [err]             ~~~~~~~~~~~~~~~^^^^^^^
+2026-03-08T11:13:09.124796001Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 341, in connection
+2026-03-08T11:13:09.124800501Z [err]      con = self.steady_connection()
+2026-03-08T11:13:09.124806261Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/pooled_db.py", line 292, in steady_connection
+2026-03-08T11:13:09.124809161Z [err]      return connect(
+2026-03-08T11:13:09.124812311Z [err]          self._creator, self._maxusage, self._setsession,
+2026-03-08T11:13:09.124815251Z [err]          self._failures, self._ping, True, *self._args, **self._kwargs)
+2026-03-08T11:13:09.127835414Z [err]                  ~~~~~~~~~~~~^^
+2026-03-08T11:13:09.127841754Z [err]    File "/app/.venv/lib/python3.13/site-packages/dbutils/steady_db.py", line 215, in _create
+2026-03-08T11:13:09.127846204Z [err]      con = self._creator(*self._args, **self._kwargs)
+2026-03-08T11:13:09.127849514Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 365, in __init__
+2026-03-08T11:13:09.127853264Z [err]      self.connect()
+2026-03-08T11:13:09.127856914Z [err]      ~~~~~~~~~~~~^^
+2026-03-08T11:13:09.127859784Z [err]    File "/app/.venv/lib/python3.13/site-packages/pymysql/connections.py", line 723, in connect
+2026-03-08T11:13:09.127862844Z [err]      raise exc
+2026-03-08T11:13:09.127867724Z [err]  pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)")

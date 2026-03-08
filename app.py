@@ -123,22 +123,31 @@ def _parse_database_url(url: str) -> dict:
     }
 
 
+
 _db_params = _parse_database_url(CONFIG["database"]["url"])
-_pool = PooledDB(
-    creator=pymysql,
-    maxconnections=10,
-    mincached=2,
-    maxcached=5,
-    blocking=True,
-    host=_db_params["host"],
-    port=_db_params["port"],
-    user=_db_params["user"],
-    password=_db_params["password"],
-    database=_db_params["database"],
-    charset="utf8mb4",
-    cursorclass=pymysql.cursors.DictCursor,
-    autocommit=False,
-)
+_pool = None
+
+
+def _get_pool():
+    """延迟初始化连接池（首次调用时创建）"""
+    global _pool
+    if _pool is None:
+        _pool = PooledDB(
+            creator=pymysql,
+            maxconnections=10,
+            mincached=0,
+            maxcached=5,
+            blocking=True,
+            host=_db_params["host"],
+            port=_db_params["port"],
+            user=_db_params["user"],
+            password=_db_params["password"],
+            database=_db_params["database"],
+            charset="utf8mb4",
+            cursorclass=pymysql.cursors.DictCursor,
+            autocommit=False,
+        )
+    return _pool
 
 
 # ==================== 数据库相关 ====================
@@ -148,7 +157,7 @@ def get_db():
     """获取数据库连接（从连接池）"""
     db = getattr(g, "_database", None)
     if db is None:
-        db = g._database = _pool.connection()
+        db = g._database = _get_pool().connection()
     return db
 
 
@@ -169,7 +178,7 @@ def _execute(db, sql, params=None):
 
 def init_db():
     """初始化数据库（MySQL）"""
-    conn = _pool.connection()
+    conn = _get_pool().connection()
     cursor = conn.cursor()
 
     # CDK表
