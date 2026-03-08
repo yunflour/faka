@@ -22,7 +22,7 @@ import pymysql.cursors
 from dbutils.pooled_db import PooledDB
 
 import requests
-from flask import Flask, g, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, g, jsonify, redirect, render_template, request, Response, send_file, session, url_for
 
 def _env_str(name: str, default: str) -> str:
     value = os.getenv(name)
@@ -1441,7 +1441,7 @@ def upload_accounts_json():
                 _execute(db,
                     """INSERT INTO accounts
                        (email, access_token, refresh_token, id_token, token_data, status)
-                       VALUES (%s, %s, %s, %s, %s, 'available')""",
+                       VALUES (%s, %s, %s, %s, %s, 'unknown')""",
                     (
                         email,
                         access_token,
@@ -1534,7 +1534,7 @@ def admin_accounts():
                 _execute(db,
                     """INSERT INTO accounts
                        (email, access_token, refresh_token, id_token, token_data, status)
-                       VALUES (%s, %s, %s, %s, %s, 'available')""",
+                       VALUES (%s, %s, %s, %s, %s, 'unknown')""",
                     (
                         email,
                         access_token,
@@ -1579,29 +1579,66 @@ def verify_account(account_id):
 @app.route("/api/admin/accounts/verify-all", methods=["POST"])
 @admin_required
 def verify_all_accounts():
-    """批量验证所有账号"""
+    """批量验证账号（SSE流式返回进度）"""
+    data = request.get_json() or {}
+    only_unknown = data.get("only_unknown", False)
+
     db = get_db()
-    accounts = _execute(db, "SELECT id FROM accounts WHERE status = 'available'").fetchall()
+    if only_unknown:
+        accounts = _execute(db, "SELECT id, email FROM accounts WHERE status = 'unknown'").fetchall()
+    else:
+        accounts = _execute(db, "SELECT id, email FROM accounts WHERE status IN ('available', 'unknown')").fetchall()
 
-    results = []
-    for acc in accounts:
-        result = check_account_status(acc["id"])
-        results.append({
-            "id": acc["id"],
-            "valid": result["valid"],
-            "classification": result.get("classification", "unknown"),
-            "status": result["status"],
-        })
+    total = len(accounts)
+    if total == 0:
+        return jsonify({"success": True, "total": 0, "blocked": 0, "unknown": 0, "available": 0})
 
-    blocked_count = len([r for r in results if r.get("classification") == "blocked"])
-    unknown_count = len([r for r in results if r.get("classification") == "unknown"])
-    return jsonify({
-        "success": True,
-        "total": len(results),
-        "blocked": blocked_count,
-        "unknown": unknown_count,
-        "results": results,
-    })
+    def generate():
+        blocked_count = 0
+        available_count = 0
+        unknown_count = 0
+
+        for i, acc in enumerate(accounts, 1):
+            result = check_account_status(acc["id"])
+            classification = result.get("classification", "unknown")
+
+            if classification == "blocked":
+                blocked_count += 1
+            elif classification == "available":
+                available_count += 1
+            else:
+                unknown_count += 1
+
+            # 发送进度事件
+            progress_data = {
+                "current": i,
+                "total": total,
+                "email": acc["email"],
+                "classification": classification,
+                "blocked": blocked_count,
+                "available": available_count,
+                "unknown": unknown_count,
+            }
+            yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+
+        # 发送完成事件
+        complete_data = {
+            "done": True,
+            "total": total,
+            "blocked": blocked_count,
+            "available": available_count,
+            "unknown": unknown_count,
+        }
+        yield f"data: {json.dumps(complete_data, ensure_ascii=False)}\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @app.route("/api/admin/orders")

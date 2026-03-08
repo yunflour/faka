@@ -419,6 +419,7 @@
                         <option value="unused">未使用</option>
                         <option value="used">已使用</option>
                     </select>
+                    <button class="btn btn-secondary btn-sm" onclick="copySelectedCDKs()">复制选中</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteSelectedCDKs()">删除选中</button>
                 </div>
                 <table>
@@ -447,7 +448,29 @@
                 <div>
                     <button class="btn btn-success" onclick="openModal('import-account-modal')">导入账号</button>
                     <button class="btn btn-primary" onclick="importFromData()">从data导入</button>
-                    <button class="btn btn-secondary" onclick="verifyAllAccounts()">批量校验</button>
+                    <button class="btn btn-secondary" onclick="startVerifyAll()">批量校验</button>
+                    <label style="margin-left: 10px; cursor: pointer;">
+                        <input type="checkbox" id="verify-only-unknown"> 仅校验未知
+                    </label>
+                </div>
+            </div>
+            <!-- 校验进度条 -->
+            <div id="verify-progress" class="card" style="display: none; margin-bottom: 15px; padding: 15px; background: #f8f9fa;">
+                <div style="margin-bottom: 10px;">
+                    <strong>校验进度：</strong>
+                    <span id="verify-current">0</span> / <span id="verify-total">0</span>
+                    &nbsp;&nbsp;|&nbsp;&nbsp;
+                    <span style="color: green;">可用: <span id="verify-available">0</span></span>
+                    &nbsp;&nbsp;
+                    <span style="color: red;">封禁: <span id="verify-blocked">0</span></span>
+                    &nbsp;&nbsp;
+                    <span style="color: orange;">未知: <span id="verify-unknown">0</span></span>
+                </div>
+                <div style="background: #ddd; border-radius: 4px; height: 20px; overflow: hidden;">
+                    <div id="verify-progress-bar" style="background: #4CAF50; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <div style="margin-top: 10px; color: #666;">
+                    当前校验: <span id="verify-current-email">-</span>
                 </div>
             </div>
             <div class="card">
@@ -456,6 +479,7 @@
                         <option value="">全部状态</option>
                         <option value="available">可用</option>
                         <option value="blocked">已封禁</option>
+                        <option value="unknown">未知</option>
                     </select>
                     <button class="btn btn-danger btn-sm" onclick="deleteSelectedAccounts()">删除选中</button>
                 </div>
@@ -711,7 +735,7 @@
                 const tbody = document.getElementById('cdks-table-body');
                 tbody.innerHTML = data.cdks.map(cdk => `
                     <tr>
-                        <td><input type="checkbox" class="cdk-checkbox" value="${cdk.id}" onchange="updateSelection('cdk')"></td>
+                        <td><input type="checkbox" class="cdk-checkbox" value="${cdk.id}" data-code="${cdk.code}" onchange="updateSelection('cdk')"></td>
                         <td>${cdk.id}</td>
                         <td><code>${cdk.code}</code></td>
                         <td><span class="status-badge ${cdk.status}">${cdk.status === 'unused' ? '未使用' : '已使用'}</span></td>
@@ -780,6 +804,21 @@
                 alert('删除失败: ' + error.message);
             }
             hideLoading();
+        }
+
+        // 复制选中的CDK
+        function copySelectedCDKs() {
+            const checkboxes = document.querySelectorAll('.cdk-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert('请选择要复制的CDK');
+                return;
+            }
+            const codes = Array.from(checkboxes).map(cb => cb.dataset.code);
+            navigator.clipboard.writeText(codes.join('\n')).then(() => {
+                alert(`已复制 ${codes.length} 个CDK码`);
+            }).catch(err => {
+                alert('复制失败: ' + err.message);
+            });
         }
 
         function deleteSelectedCDKs() {
@@ -1036,22 +1075,77 @@
             hideLoading();
         }
 
-        // 批量校验账号
-        async function verifyAllAccounts() {
-            if (!confirm('确定批量校验所有可用账号吗？这可能需要一些时间。')) return;
+        // 批量校验账号（带进度条）
+        async function startVerifyAll() {
+            const onlyUnknown = document.getElementById('verify-only-unknown').checked;
+            const confirmMsg = onlyUnknown ? '确定批量校验所有未知状态的账号吗？' : '确定批量校验所有可用/未知状态的账号吗？';
+            if (!confirm(confirmMsg)) return;
 
-            showLoading();
+            // 显示进度条
+            const progressDiv = document.getElementById('verify-progress');
+            progressDiv.style.display = 'block';
+
+            // 重置进度显示
+            document.getElementById('verify-current').textContent = '0';
+            document.getElementById('verify-total').textContent = '0';
+            document.getElementById('verify-available').textContent = '0';
+            document.getElementById('verify-blocked').textContent = '0';
+            document.getElementById('verify-unknown').textContent = '0';
+            document.getElementById('verify-progress-bar').style.width = '0%';
+            document.getElementById('verify-current-email').textContent = '-';
+
             try {
-                const response = await fetch('/api/admin/accounts/verify-all', {method: 'POST'});
-                const data = await response.json();
+                const response = await fetch('/api/admin/accounts/verify-all', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({only_unknown: onlyUnknown})
+                });
 
-                alert(`校验完成: 共 ${data.total} 个账号, ${data.blocked} 个被封禁, ${data.unknown || 0} 个未知`);
-                loadAccounts();
-                loadStats();
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, {stream: true});
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+
+                                if (data.done) {
+                                    // 校验完成
+                                    alert(`校验完成: 共 ${data.total} 个账号\n可用: ${data.available}\n封禁: ${data.blocked}\n未知: ${data.unknown}`);
+                                    progressDiv.style.display = 'none';
+                                    loadAccounts();
+                                    loadStats();
+                                } else {
+                                    // 更新进度
+                                    document.getElementById('verify-current').textContent = data.current;
+                                    document.getElementById('verify-total').textContent = data.total;
+                                    document.getElementById('verify-available').textContent = data.available;
+                                    document.getElementById('verify-blocked').textContent = data.blocked;
+                                    document.getElementById('verify-unknown').textContent = data.unknown;
+                                    document.getElementById('verify-current-email').textContent = data.email || '-';
+
+                                    const percent = Math.round((data.current / data.total) * 100);
+                                    document.getElementById('verify-progress-bar').style.width = percent + '%';
+                                }
+                            } catch (e) {
+                                console.error('解析进度数据失败:', e);
+                            }
+                        }
+                    }
+                }
             } catch (error) {
                 alert('校验失败: ' + error.message);
+                progressDiv.style.display = 'none';
             }
-            hideLoading();
         }
 
         // 删除账号
