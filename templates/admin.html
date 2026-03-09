@@ -521,7 +521,8 @@
                             <th>ID</th>
                             <th>CDK</th>
                             <th>账号邮箱</th>
-                            <th>状态</th>
+                            <th>账号状态</th>
+                            <th>订单状态</th>
                             <th>质保天数</th>
                             <th>质保到期</th>
                             <th>替换次数</th>
@@ -1208,18 +1209,25 @@
                 const data = await response.json();
 
                 const tbody = document.getElementById('orders-table-body');
-                tbody.innerHTML = data.orders.map(order => `
+                tbody.innerHTML = data.orders.map(order => {
+                    const accountStatusText = order.account_status === 'available' ? '可用' :
+                                              (order.account_status === 'blocked' ? '封禁' :
+                                              (order.account_status === 'unknown' ? '未知' : '-'));
+                    const accountStatusClass = order.account_status || '';
+                    return `
                     <tr>
                         <td>${order.id}</td>
                         <td><code>${order.cdk_code}</code></td>
                         <td>${order.account_email || '-'}</td>
-                        <td><span class="status-badge ${order.status}">${order.status === 'active' ? '有效' : order.status}</span></td>
+                        <td><span class="status-badge ${accountStatusClass}">${accountStatusText}</span></td>
+                        <td><span class="status-badge ${order.status}">${order.status === 'active' ? '有效' : '过期'}</span></td>
                         <td>${order.warranty_days}天</td>
                         <td>${new Date(order.warranty_expires_at).toLocaleString()}</td>
                         <td>${order.replacement_count}</td>
                         <td>${new Date(order.created_at).toLocaleString()}</td>
                     </tr>
-                `).join('');
+                    `;
+                }).join('');
 
                 renderPagination('orders', data.total, data.page, data.per_page);
             } catch (error) {

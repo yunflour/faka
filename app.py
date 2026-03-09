@@ -1672,7 +1672,7 @@ def admin_orders():
     offset = (page - 1) * per_page
 
     query = """
-        SELECT o.*, a.email as account_email
+        SELECT o.*, a.email as account_email, a.status as account_status
         FROM orders o
         LEFT JOIN accounts a ON o.account_id = a.id
     """
