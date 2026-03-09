@@ -897,10 +897,10 @@ def redeem_cdk():
     # 获取绑定的账号或分配一个可用账号
     account_id = cdk["account_id"]
     if not account_id:
-        # 分配一个可用账号
+        # 分配一个可用账号（排除所有已有订单的账号，防止重复分配）
         available_account = _execute(db,
             "SELECT * FROM accounts WHERE status = 'available' AND id NOT IN "
-            "(SELECT account_id FROM orders WHERE status = 'active') LIMIT 1"
+            "(SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL) LIMIT 1"
         ).fetchone()
         if not available_account:
             return jsonify({"success": False, "error": "暂无可用账号"}), 400
@@ -1147,10 +1147,10 @@ def request_replacement():
 
     old_account_id = order["account_id"]
 
-    # 查找新的可用账号
+    # 查找新的可用账号（排除所有已有订单的账号，防止重复分配）
     new_account = _execute(db,
         """SELECT * FROM accounts WHERE status = 'available'
-           AND id != %s AND id NOT IN (SELECT account_id FROM orders WHERE status = 'active')
+           AND id != %s AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)
            LIMIT 1""",
         (old_account_id,)
     ).fetchone()
