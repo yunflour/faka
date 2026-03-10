@@ -449,6 +449,7 @@
                     <button class="btn btn-success" onclick="openModal('import-account-modal')">导入账号</button>
                     <button class="btn btn-primary" onclick="importFromData()">从data导入</button>
                     <button class="btn btn-secondary" onclick="startVerifyAll()">批量校验</button>
+                    <button class="btn btn-secondary" onclick="startWarmupAll()">批量预热</button>
                     <label style="margin-left: 10px; cursor: pointer;">
                         <input type="checkbox" id="verify-only-unknown"> 仅校验未知
                     </label>
@@ -471,6 +472,22 @@
                 </div>
                 <div style="margin-top: 10px; color: #666;">
                     当前校验: <span id="verify-current-email">-</span>
+                </div>
+            </div>
+            <div id="warmup-progress" class="card" style="display: none; margin-bottom: 15px; padding: 15px; background: #f8f9fa;">
+                <div style="margin-bottom: 10px;">
+                    <strong>预热进度：</strong>
+                    <span id="warmup-current">0</span> / <span id="warmup-total">0</span>
+                    &nbsp;&nbsp;|&nbsp;&nbsp;
+                    <span style="color: green;">成功: <span id="warmup-success">0</span></span>
+                    &nbsp;&nbsp;
+                    <span style="color: red;">失败: <span id="warmup-failed">0</span></span>
+                </div>
+                <div style="background: #ddd; border-radius: 4px; height: 20px; overflow: hidden;">
+                    <div id="warmup-progress-bar" style="background: #11998e; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <div style="margin-top: 10px; color: #666;">
+                    当前预热: <span id="warmup-current-email">-</span>
                 </div>
             </div>
             <div class="card">
@@ -903,6 +920,7 @@
                         <td>${new Date(acc.created_at).toLocaleString()}</td>
                         <td class="actions-cell">
                             <button class="btn btn-sm btn-secondary" onclick="verifyAccount(${acc.id})">校验</button>
+                            <button class="btn btn-sm btn-success" onclick="warmupAccount(${acc.id})">预热</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteAccount(${acc.id})">删除</button>
                         </td>
                     </tr>
@@ -1076,6 +1094,25 @@
             hideLoading();
         }
 
+        async function warmupAccount(id) {
+            showLoading();
+            try {
+                const response = await fetch(`/api/admin/accounts/${id}/warmup`, {method: 'POST'});
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '预热失败');
+                }
+
+                const preview = data.response_preview ? `\n返回: ${String(data.response_preview).slice(0, 100)}` : '';
+                alert(`预热成功: ${data.email || id}${preview}`);
+                loadAccounts();
+            } catch (error) {
+                alert('预热失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
         // 批量校验账号（带进度条）
         async function startVerifyAll() {
             const onlyUnknown = document.getElementById('verify-only-unknown').checked;
@@ -1156,6 +1193,69 @@
             } catch (error) {
                 console.error('校验失败:', error);
                 alert('校验失败: ' + error.message);
+                progressDiv.style.display = 'none';
+            }
+        }
+
+        async function startWarmupAll() {
+            if (!confirm('确定批量预热所有未出单且未封禁的账号吗？')) return;
+
+            const progressDiv = document.getElementById('warmup-progress');
+            progressDiv.style.display = 'block';
+
+            document.getElementById('warmup-current').textContent = '0';
+            document.getElementById('warmup-total').textContent = '0';
+            document.getElementById('warmup-success').textContent = '0';
+            document.getElementById('warmup-failed').textContent = '0';
+            document.getElementById('warmup-progress-bar').style.width = '0%';
+            document.getElementById('warmup-current-email').textContent = '-';
+
+            try {
+                const response = await fetch('/api/admin/accounts/warmup-all', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                });
+
+                if (!response.ok) {
+                    throw new Error('请求失败: ' + response.status);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, {stream: true});
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+
+                        const data = JSON.parse(line.slice(6));
+                        if (data.done) {
+                            alert(`预热完成: 共 ${data.total} 个账号\n成功: ${data.success}\n失败: ${data.failed}`);
+                            progressDiv.style.display = 'none';
+                            loadAccounts();
+                            break;
+                        }
+
+                        document.getElementById('warmup-current').textContent = data.current;
+                        document.getElementById('warmup-total').textContent = data.total;
+                        document.getElementById('warmup-success').textContent = data.success;
+                        document.getElementById('warmup-failed').textContent = data.failed;
+                        document.getElementById('warmup-current-email').textContent = data.email || '-';
+
+                        const percent = data.total ? Math.round((data.current / data.total) * 100) : 0;
+                        document.getElementById('warmup-progress-bar').style.width = percent + '%';
+                    }
+                }
+            } catch (error) {
+                alert('批量预热失败: ' + error.message);
                 progressDiv.style.display = 'none';
             }
         }

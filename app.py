@@ -6,6 +6,7 @@ Kiro 在线发卡平台
 
 import io
 import json
+import hashlib
 import os
 import random
 import re
@@ -16,6 +17,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from typing import Any, Optional
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import pymysql
 import pymysql.cursors
@@ -74,6 +76,10 @@ CONFIG = {
         "length": 16,
         "prefix": "KIRO",
     },
+    "warmup": {
+        "prompt": "hi",
+        "timeout_seconds": 30,
+    },
 }
 
 # 环境变量覆盖（Railway 部署优先使用这些）
@@ -106,6 +112,11 @@ CONFIG["database"]["url"] = _env_str("DATABASE_URL", str(CONFIG["database"]["url
 
 CONFIG["cdk"]["length"] = _env_int("CDK_LENGTH", int(CONFIG["cdk"]["length"]))
 CONFIG["cdk"]["prefix"] = _env_str("CDK_PREFIX", str(CONFIG["cdk"]["prefix"]))
+
+CONFIG["warmup"]["prompt"] = _env_str("WARMUP_PROMPT", str(CONFIG["warmup"]["prompt"]))
+CONFIG["warmup"]["timeout_seconds"] = _env_int(
+    "WARMUP_TIMEOUT_SECONDS", int(CONFIG["warmup"]["timeout_seconds"])
+)
 
 app = Flask(__name__)
 app.secret_key = CONFIG["server"]["secret_key"]
@@ -407,6 +418,66 @@ def _pick_first_nonempty(*values: Any) -> str:
         if text:
             return text
     return ""
+
+
+def _extract_region_from_profile_arn(profile_arn: str) -> str:
+    if not profile_arn:
+        return ""
+    parts = str(profile_arn).split(":")
+    return parts[3].strip() if len(parts) >= 4 and parts[3].strip() else ""
+
+
+def _generate_account_key(client_id: str, refresh_token: str, account_id: int) -> str:
+    seed = _pick_first_nonempty(client_id, refresh_token, str(account_id), uuid4().hex)
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+
+def _build_kiro_runtime_headers(access_token: str, account_key: str) -> dict[str, str]:
+    token_hash = hashlib.sha256(account_key.encode("utf-8")).hexdigest()
+    kiro_version = "0.10.32"
+    runtime_sdk_version = "1.0.0"
+    streaming_sdk_version = "1.0.27"
+    os_type = "linux"
+    os_version = "6.12.0"
+    node_version = "22.21.1"
+
+    return {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+        "Accept": "*/*",
+        "x-amz-user-agent": f"aws-sdk-js/{streaming_sdk_version} KiroIDE-{kiro_version}-{token_hash}",
+        "User-Agent": (
+            f"aws-sdk-js/{streaming_sdk_version} ua/2.1 os/{os_type}#{os_version} "
+            f"lang/js md/nodejs#{node_version} api/codewhispererstreaming#{streaming_sdk_version} "
+            f"m/E KiroIDE-{kiro_version}-{token_hash}"
+        ),
+        "amz-sdk-invocation-id": str(uuid4()),
+        "amz-sdk-request": "attempt=1; max=3",
+        "x-amzn-kiro-agent-mode": "vibe",
+        "x-amzn-codewhisperer-optout": "true",
+    }
+
+
+def _build_kiro_warmup_payload(prompt: str, profile_arn: str) -> dict[str, Any]:
+    return {
+        "conversationState": {
+            "agentTaskType": "vibe",
+            "chatTriggerType": "MANUAL",
+            "conversationId": str(uuid4()),
+            "currentMessage": {
+                "userInputMessage": {
+                    "content": f"[Context: Current time is {datetime.now().strftime('%Y-%m-%d %H:%M:%S CST')}]\n\n{prompt}",
+                    "modelId": "auto",
+                    "origin": "AI_EDITOR",
+                }
+            },
+        },
+        "profileArn": profile_arn,
+        "inferenceConfig": {
+            "maxTokens": 32,
+            "temperature": 0,
+        },
+    }
 
 
 def resolve_account_verification_context(account: dict) -> dict[str, str]:
@@ -795,6 +866,134 @@ def check_account_status(account_id: int, db=None) -> dict[str, Any]:
             "profile_arn": ctx["profile_arn"],
         },
         "detail": result,
+    }
+
+
+def get_unordered_account(account_id: int, db) -> Optional[dict[str, Any]]:
+    """获取未进入任何订单的账号。"""
+    return _execute(
+        db,
+        """SELECT a.*
+           FROM accounts a
+           LEFT JOIN orders o ON o.account_id = a.id
+           WHERE a.id = %s AND o.id IS NULL""",
+        (account_id,),
+    ).fetchone()
+
+
+def warmup_account(account_id: int, db=None) -> dict[str, Any]:
+    """对未出单账号执行一次简单对话预热。"""
+    if db is None:
+        db = get_db()
+
+    account = get_unordered_account(account_id, db)
+    if not account:
+        return {"success": False, "error": "账号不存在或已在订单中", "status": "not_eligible"}
+
+    if account["status"] == "blocked":
+        return {"success": False, "error": "账号已封禁，不能预热", "status": "blocked"}
+
+    ctx = resolve_account_verification_context(account)
+    access_token = ctx["access_token"]
+    refreshed_access_token = None
+    refreshed_refresh_token = None
+    refreshed_id_token = None
+    refresh_result = None
+
+    if ctx["refresh_token"] and ctx["client_id"] and ctx["client_secret"] and ctx["region"]:
+        refresh_result = refresh_access_token(
+            refresh_token=ctx["refresh_token"],
+            client_id=ctx["client_id"],
+            client_secret=ctx["client_secret"],
+            idc_region=ctx["region"],
+        )
+        if refresh_result.get("ok") and isinstance(refresh_result.get("response_json"), dict):
+            refreshed_access_token = _pick_first_nonempty(refresh_result["response_json"].get("accessToken"))
+            refreshed_refresh_token = _pick_first_nonempty(refresh_result["response_json"].get("refreshToken"))
+            refreshed_id_token = _pick_first_nonempty(refresh_result["response_json"].get("idToken"))
+            if refreshed_access_token:
+                access_token = refreshed_access_token
+
+    if not access_token:
+        return {"success": False, "error": "无可用访问令牌", "status": "missing_access_token", "refresh": refresh_result}
+
+    api_region = _pick_first_nonempty(
+        _extract_region_from_profile_arn(ctx["profile_arn"]),
+        CONFIG["verification"].get("idc_region"),
+        "us-east-1",
+    )
+    payload = _build_kiro_warmup_payload(CONFIG["warmup"]["prompt"], ctx["profile_arn"])
+    headers = _build_kiro_runtime_headers(
+        access_token,
+        _generate_account_key(ctx["client_id"], ctx["refresh_token"], account_id),
+    )
+
+    response_json = None
+    response_text = ""
+    try:
+        resp = requests.post(
+            f"https://q.{api_region}.amazonaws.com/generateAssistantResponse",
+            headers=headers,
+            json=payload,
+            timeout=CONFIG["warmup"]["timeout_seconds"],
+        )
+        response_text = resp.text or ""
+        try:
+            response_json = resp.json()
+        except Exception:
+            response_json = None
+    except Exception as e:
+        return {
+            "success": False,
+            "status": "request_failed",
+            "error": str(e),
+            "refresh": refresh_result,
+        }
+
+    token_payload = _parse_token_data(account["token_data"])
+    if refreshed_access_token and ("access_token" in token_payload):
+        token_payload["access_token"] = refreshed_access_token
+    if refreshed_refresh_token and ("refresh_token" in token_payload):
+        token_payload["refresh_token"] = refreshed_refresh_token
+    if refreshed_id_token and ("id_token" in token_payload):
+        token_payload["id_token"] = refreshed_id_token
+    token_data_json = json.dumps(token_payload, ensure_ascii=False) if token_payload else account["token_data"]
+
+    _execute(
+        db,
+        """UPDATE accounts
+           SET access_token = %s, refresh_token = %s, id_token = %s, token_data = %s, last_verified_at = %s
+           WHERE id = %s""",
+        (
+            refreshed_access_token or account["access_token"],
+            refreshed_refresh_token or account["refresh_token"],
+            refreshed_id_token or account["id_token"],
+            token_data_json,
+            datetime.now().isoformat(),
+            account_id,
+        ),
+    )
+    db.commit()
+
+    ok = resp.ok
+    output_text = ""
+    if isinstance(response_json, dict):
+        output_text = _pick_first_nonempty(
+            response_json.get("content"),
+            response_json.get("message"),
+            response_json.get("assistantResponseMessage", {}).get("content") if isinstance(response_json.get("assistantResponseMessage"), dict) else "",
+        )
+
+    return {
+        "success": ok,
+        "status": "ok" if ok else "upstream_error",
+        "account_id": account_id,
+        "email": account["email"],
+        "http_status": resp.status_code,
+        "response": response_json,
+        "response_preview": output_text or response_text[:500],
+        "refresh": refresh_result,
+        "api_region": api_region,
     }
 
 
@@ -1577,6 +1776,17 @@ def verify_account(account_id):
     return jsonify(result)
 
 
+@app.route("/api/admin/accounts/<int:account_id>/warmup", methods=["POST"])
+@admin_required
+def warmup_single_account(account_id):
+    """预热单个未出单账号。"""
+    result = warmup_account(account_id)
+    status_code = 200 if result.get("success") else 400
+    if result.get("status") == "request_failed":
+        status_code = 502
+    return jsonify(result), status_code
+
+
 @app.route("/api/admin/accounts/verify-all", methods=["POST"])
 @admin_required
 def verify_all_accounts():
@@ -1645,6 +1855,79 @@ def verify_all_accounts():
             "blocked": blocked_count,
             "available": available_count,
             "unknown": unknown_count,
+        }
+        yield f"data: {json.dumps(complete_data, ensure_ascii=False)}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+@app.route("/api/admin/accounts/warmup-all", methods=["POST"])
+@admin_required
+def warmup_all_accounts():
+    """批量预热所有未出单且未封禁账号。"""
+    db = _get_pool().connection()
+    try:
+        accounts = _execute(
+            db,
+            """SELECT a.id, a.email, a.status
+               FROM accounts a
+               LEFT JOIN orders o ON o.account_id = a.id
+               WHERE o.id IS NULL AND a.status IN ('available', 'unknown')
+               ORDER BY a.created_at DESC""",
+        ).fetchall()
+        accounts_list = [dict(acc) for acc in accounts]
+    finally:
+        db.close()
+
+    total = len(accounts_list)
+
+    def generate():
+        if total == 0:
+            yield f"data: {json.dumps({'done': True, 'total': 0, 'success': 0, 'failed': 0}, ensure_ascii=False)}\n\n"
+            return
+
+        success_count = 0
+        failed_count = 0
+
+        for i, acc in enumerate(accounts_list, 1):
+            db = _get_pool().connection()
+            try:
+                result = warmup_account(acc["id"], db)
+            except Exception as e:
+                result = {"success": False, "error": str(e), "status": "exception"}
+            finally:
+                db.close()
+
+            if result.get("success"):
+                success_count += 1
+            else:
+                failed_count += 1
+
+            progress_data = {
+                "current": i,
+                "total": total,
+                "email": acc["email"],
+                "success": success_count,
+                "failed": failed_count,
+                "ok": bool(result.get("success")),
+                "status": result.get("status"),
+                "error": result.get("error"),
+            }
+            yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+
+        complete_data = {
+            "done": True,
+            "total": total,
+            "success": success_count,
+            "failed": failed_count,
         }
         yield f"data: {json.dumps(complete_data, ensure_ascii=False)}\n\n"
 
