@@ -432,23 +432,38 @@ def _generate_account_key(client_id: str, refresh_token: str, account_id: int) -
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
-def _build_kiro_runtime_headers(access_token: str, account_key: str) -> dict[str, str]:
+def _build_kiro_runtime_headers(access_token: str, account_key: str, auth_method: str) -> dict[str, str]:
+    normalized_auth_method = str(auth_method or "").strip().lower()
+
+    # Align with CLIProxyAPIPlus v6.8.30-0 and earlier:
+    # IDC accounts use KiroIDE-style dynamic fingerprint headers,
+    # other auth types use the older static Amazon Q CLI-style headers.
+    if normalized_auth_method != "idc":
+        return {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Accept": "*/*",
+            "x-amz-user-agent": "aws-sdk-rust/1.3.9 ua/2.1 api/ssooidc/1.88.0 os/macos lang/rust/1.87.0 m/E app/AmazonQ-For-CLI",
+            "User-Agent": "aws-sdk-rust/1.3.9 os/macos lang/rust/1.87.0",
+            "amz-sdk-invocation-id": str(uuid4()),
+            "amz-sdk-request": "attempt=1; max=3",
+        }
+
     token_hash = hashlib.sha256(account_key.encode("utf-8")).hexdigest()
-    kiro_version = "0.10.32"
-    runtime_sdk_version = "1.0.0"
-    streaming_sdk_version = "1.0.27"
-    os_type = "linux"
-    os_version = "6.12.0"
+    kiro_version = "0.8.1"
+    sdk_version = "1.0.27"
+    os_type = "win32"
+    os_version = "10.0.19044"
     node_version = "22.21.1"
 
     return {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
         "Accept": "*/*",
-        "x-amz-user-agent": f"aws-sdk-js/{streaming_sdk_version} KiroIDE-{kiro_version}-{token_hash}",
+        "x-amz-user-agent": f"aws-sdk-js/{sdk_version} KiroIDE-{kiro_version}-{token_hash}",
         "User-Agent": (
-            f"aws-sdk-js/{streaming_sdk_version} ua/2.1 os/{os_type}#{os_version} "
-            f"lang/js md/nodejs#{node_version} api/codewhispererstreaming#{streaming_sdk_version} "
+            f"aws-sdk-js/{sdk_version} ua/2.1 os/{os_type}#{os_version} "
+            f"lang/js md/nodejs#{node_version} api/codewhispererstreaming#{sdk_version} "
             f"m/E KiroIDE-{kiro_version}-{token_hash}"
         ),
         "amz-sdk-invocation-id": str(uuid4()),
@@ -926,6 +941,10 @@ def warmup_account(account_id: int, db=None) -> dict[str, Any]:
     headers = _build_kiro_runtime_headers(
         access_token,
         _generate_account_key(ctx["client_id"], ctx["refresh_token"], account_id),
+        _pick_first_nonempty(
+            _parse_token_data(account["token_data"]).get("auth_method"),
+            _parse_token_data(account["token_data"]).get("authMethod"),
+        ),
     )
 
     response_json = None
