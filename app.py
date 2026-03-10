@@ -1755,17 +1755,63 @@ def admin_accounts():
         })
 
     elif request.method == "DELETE":
-        data = request.get_json()
-        account_ids = data.get("ids", [])
+        data = request.get_json(silent=True) or {}
+        raw_account_ids = data.get("ids", [])
+
+        account_ids = []
+        for account_id in raw_account_ids:
+            try:
+                account_ids.append(int(account_id))
+            except (TypeError, ValueError):
+                continue
+
+        account_ids = list(dict.fromkeys(account_ids))
 
         if not account_ids:
             return jsonify({"success": False, "error": "请选择要删除的账号"}), 400
 
         placeholders = ",".join("%s" for _ in account_ids)
-        _execute(db, f"DELETE FROM accounts WHERE id IN ({placeholders})", account_ids)
+        linked_rows = _execute(
+            db,
+            f"""SELECT DISTINCT a.id, a.email
+               FROM accounts a
+               INNER JOIN orders o ON o.account_id = a.id
+               WHERE a.id IN ({placeholders})""",
+            account_ids,
+        ).fetchall()
+        linked_accounts = [dict(row) for row in linked_rows]
+        linked_account_ids = {row["id"] for row in linked_accounts}
+
+        deletable_ids = [account_id for account_id in account_ids if account_id not in linked_account_ids]
+
+        deleted_count = 0
+        if deletable_ids:
+            delete_placeholders = ",".join("%s" for _ in deletable_ids)
+            try:
+                cursor = _execute(db, f"DELETE FROM accounts WHERE id IN ({delete_placeholders})", deletable_ids)
+            except pymysql.err.IntegrityError:
+                db.rollback()
+                return jsonify({
+                    "success": False,
+                    "error": "删除失败，部分账号仍有关联订单，请刷新后重试",
+                }), 409
+            deleted_count = cursor.rowcount
+
         db.commit()
 
-        return jsonify({"success": True, "message": "删除成功"})
+        if linked_accounts:
+            blocked_emails = [acc["email"] for acc in linked_accounts if acc.get("email")]
+            blocked_preview = "、".join(blocked_emails[:5])
+            blocked_message = f"，如 {blocked_preview}" if blocked_preview else ""
+            return jsonify({
+                "success": deleted_count > 0,
+                "message": f"已删除 {deleted_count} 个账号，{len(linked_accounts)} 个账号因已有订单无法删除{blocked_message}",
+                "deleted_count": deleted_count,
+                "blocked_count": len(linked_accounts),
+                "blocked_accounts": linked_accounts,
+            }), 200 if deleted_count > 0 else 409
+
+        return jsonify({"success": True, "message": f"成功删除 {deleted_count} 个账号", "deleted_count": deleted_count})
 
 
 @app.route("/api/admin/accounts/<int:account_id>/verify", methods=["POST"])

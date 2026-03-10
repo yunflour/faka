@@ -1266,11 +1266,20 @@
 
             showLoading();
             try {
-                await fetch('/api/admin/accounts', {
+                const response = await fetch('/api/admin/accounts', {
                     method: 'DELETE',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ids: [id]})
                 });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || data.message || '删除失败');
+                }
+
+                if (data.message) {
+                    alert(data.message);
+                }
                 loadAccounts();
                 loadStats();
             } catch (error) {
@@ -1279,7 +1288,7 @@
             hideLoading();
         }
 
-        function deleteSelectedAccounts() {
+        async function deleteSelectedAccounts() {
             if (selectedAccounts.length === 0) {
                 alert('请选择要删除的账号');
                 return;
@@ -1287,16 +1296,29 @@
             if (!confirm(`确定删除选中的 ${selectedAccounts.length} 个账号吗？`)) return;
 
             showLoading();
-            fetch('/api/admin/accounts', {
-                method: 'DELETE',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ids: selectedAccounts})
-            }).then(() => {
+            try {
+                const response = await fetch('/api/admin/accounts', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ids: selectedAccounts})
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || data.message || '删除失败');
+                }
+
                 selectedAccounts = [];
+                if (data.message) {
+                    alert(data.message);
+                }
                 loadAccounts();
                 loadStats();
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            } finally {
                 hideLoading();
-            });
+            }
         }
 
         // 加载订单列表
