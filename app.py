@@ -1388,7 +1388,7 @@ def get_order(order_id):
 
 @app.route("/api/order/<int:order_id>/download")
 def download_order_json(order_id):
-    """下载订单账号JSON，支持重复下载。"""
+    """下载订单账号JSON，导出格式适配CPA。"""
     db = get_db()
     order = _execute(db, "SELECT * FROM orders WHERE id = %s", (order_id,)).fetchone()
     if not order:
@@ -1400,24 +1400,33 @@ def download_order_json(order_id):
 
     token_data = _parse_token_data(account["token_data"])
 
-    # 以原始导入结构为准，避免导出结构漂移。
+    # 以原始导入结构为准
     if token_data:
         payload = dict(token_data)
     else:
         payload = {}
 
-    # 若存在原始 token_data，严格原样导出，避免与导入结构不一致。
-    # 仅在 token_data 为空的旧数据场景下，才做最小兜底。
-    if not payload:
-        payload = {
-            "access_token": account["access_token"],
-            "refresh_token": account["refresh_token"],
-            "email": account["email"],
-            "profile_arn": CONFIG["verification"].get("profile_arn"),
-            "region": CONFIG["verification"].get("idc_region"),
-        }
-        if account["id_token"]:
-            payload["id_token"] = account["id_token"]
+    # 从数据库补充核心字段
+    if account["access_token"]:
+        payload["access_token"] = account["access_token"]
+    if account["refresh_token"]:
+        payload["refresh_token"] = account["refresh_token"]
+    if account["id_token"]:
+        payload["id_token"] = account["id_token"]
+    if account["email"]:
+        payload["email"] = account["email"]
+
+    # CPA固定字段（如果原数据没有则补充默认值）
+    if "auth_method" not in payload:
+        payload["auth_method"] = "builder-id"
+    if "disabled" not in payload:
+        payload["disabled"] = False
+    if "provider" not in payload:
+        payload["provider"] = "AWS"
+    if "start_url" not in payload:
+        payload["start_url"] = "https://view.awsapps.com/start"
+    if "type" not in payload:
+        payload["type"] = "kiro"
 
     content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
     email_for_name = re.sub(r"[^A-Za-z0-9@._-]+", "_", str(account["email"] or "unknown").strip())
