@@ -2188,6 +2188,13 @@ def upload_accounts_json():
             refresh_token = _pick_first_nonempty(acc.get("refresh_token"), token_payload.get("refresh_token"))
             id_token = _pick_first_nonempty(acc.get("id_token"), token_payload.get("id_token"))
 
+            # 检查邮箱是否已存在
+            existing = _execute(db, "SELECT id FROM accounts WHERE email = %s", (email,)).fetchone()
+            if existing:
+                all_results.append({"file": file.filename, "email": email, "success": False, "error": "邮箱已存在"})
+                file_failed += 1
+                continue
+
             try:
                 _execute(db,
                     """INSERT INTO accounts
@@ -2280,6 +2287,12 @@ def admin_accounts():
             access_token = _pick_first_nonempty(acc.get("access_token"), token_payload.get("access_token"))
             refresh_token = _pick_first_nonempty(acc.get("refresh_token"), token_payload.get("refresh_token"))
             id_token = _pick_first_nonempty(acc.get("id_token"), token_payload.get("id_token"))
+
+            # 检查邮箱是否已存在
+            existing = _execute(db, "SELECT id FROM accounts WHERE email = %s", (email,)).fetchone()
+            if existing:
+                results.append({"email": email, "success": False, "error": "邮箱已存在"})
+                continue
 
             try:
                 _execute(db,
@@ -2738,6 +2751,13 @@ def import_from_data():
                 )
 
                 db = get_db()
+
+                # 检查邮箱是否已存在
+                existing = _execute(db, "SELECT id FROM accounts WHERE email = %s", (email,)).fetchone()
+                if existing:
+                    failed.append({"email": email, "error": "邮箱已存在"})
+                    continue
+
                 try:
                     _execute(db,
                         """INSERT INTO accounts
@@ -2753,8 +2773,8 @@ def import_from_data():
                     )
                     db.commit()
                     imported.append(email)
-                except pymysql.IntegrityError:
-                    failed.append({"email": email, "error": "已存在"})
+                except Exception as e:
+                    failed.append({"email": email, "error": str(e)})
             except Exception as e:
                 failed.append({"file": filename, "error": str(e)})
 
