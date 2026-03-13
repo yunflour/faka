@@ -1745,7 +1745,7 @@ def redeem_cdk_batch():
 
 @app.route("/api/warranty/check-batch", methods=["POST"])
 def check_warranty_batch():
-    """批量质保查询"""
+    """批量质保查询 - 调用真实检验接口检查账号状态"""
     data = request.get_json()
     cdks_input = data.get("cdks", "").strip()
 
@@ -1781,9 +1781,26 @@ def check_warranty_batch():
 
             account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)).fetchone()
 
-            # 简单检查账号状态（不调用外部API，直接使用数据库状态）
+            # 调用真实检验接口检查账号状态
+            account_check = check_account_status(order["account_id"]) if account else None
+
+            # 检查是否在质保期内
             warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
             in_warranty = datetime.now() < warranty_expires
+
+            # 判断是否可以替换：质保内 + 未超替换次数 + 账号被封禁
+            can_replace = (
+                in_warranty
+                and order["replacement_count"] < max_replacements
+                and account_check
+                and account_check.get("classification") == "blocked"
+            )
+
+            # 更新数据库中的账号状态
+            if account_check and account:
+                new_status = account_check.get("classification", account["status"])
+                if new_status != account["status"]:
+                    _execute(db, "UPDATE accounts SET status = %s WHERE id = %s", (new_status, account["id"]))
 
             results.append({
                 "cdk": cdk_code,
@@ -1799,16 +1816,20 @@ def check_warranty_batch():
                 "account": {
                     "email": account["email"] if account else None,
                     "status": account["status"] if account else None,
+                    "is_valid": account_check["valid"] if account_check else False,
+                    "classification": account_check.get("classification") if account_check else "unknown",
                 } if account else None,
                 "warranty": {
                     "in_warranty": in_warranty,
-                    "can_replace": in_warranty and order["replacement_count"] < max_replacements and account and account["status"] == "blocked",
+                    "can_replace": can_replace,
                     "max_replacements": max_replacements,
                 }
             })
 
         except Exception as e:
             results.append({"cdk": cdk_code, "success": False, "error": str(e)})
+
+    db.commit()
 
     return jsonify({
         "success": True,
