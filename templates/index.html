@@ -835,12 +835,22 @@
         }
 
         function downloadBatchJson(items) {
-            const data = items.map(item => ({
-                cdk: item.cdk,
-                order_id: item.order_id,
-                account: item.account,
-                warranty: item.warranty
-            }));
+            // 批量导出时，仅保留每个账号的原始 token_data 结构，与单个下载格式一致
+            const data = items.map(item => {
+                const acc = item.account || {};
+                // 如果有原始 token_data，优先使用
+                if (acc.token_data) {
+                    try {
+                        return typeof acc.token_data === 'string' ? JSON.parse(acc.token_data) : acc.token_data;
+                    } catch (e) {}
+                }
+                // 否则使用兜底字段
+                return {
+                    access_token: acc.access_token || '-',
+                    refresh_token: acc.refresh_token || '-',
+                    email: acc.email || '-'
+                };
+            });
             const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
