@@ -666,10 +666,12 @@
                         <option value="active">有效</option>
                         <option value="expired">过期</option>
                     </select>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSelectedOrders()">删除选中</button>
                 </div>
                 <table>
                     <thead>
                         <tr>
+                            <th><input type="checkbox" id="select-all-orders" onchange="toggleSelectAll('order')"></th>
                             <th>ID</th>
                             <th>CDK</th>
                             <th>账号邮箱</th>
@@ -679,6 +681,7 @@
                             <th>质保到期</th>
                             <th>替换次数</th>
                             <th>创建时间</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody id="orders-table-body">
@@ -811,6 +814,7 @@
         let currentOrderPage = 1;
         let selectedCDKs = [];
         let selectedAccounts = [];
+        let selectedOrders = [];
         let generatedCDKs = [];
 
         // 初始化
@@ -1614,6 +1618,7 @@
                     const accountStatusClass = order.account_status || '';
                     return `
                     <tr>
+                        <td><input type="checkbox" class="order-checkbox" value="${order.id}" data-cdk="${order.cdk_code}" onchange="updateSelection('order')"></td>
                         <td>${order.id}</td>
                         <td><code>${order.cdk_code}</code></td>
                         <td>${order.account_email || '-'}</td>
@@ -1623,6 +1628,9 @@
                         <td>${new Date(order.warranty_expires_at).toLocaleString()}</td>
                         <td>${order.replacement_count}</td>
                         <td>${new Date(order.created_at).toLocaleString()}</td>
+                        <td class="actions-cell">
+                            <button class="btn btn-sm btn-danger" onclick="deleteOrder(${order.id}, '${order.cdk_code}')">删除</button>
+                        </td>
                     </tr>
                     `;
                 }).join('');
@@ -1631,6 +1639,69 @@
             } catch (error) {
                 console.error('加载订单失败:', error);
             }
+        }
+
+        // 删除单个订单
+        async function deleteOrder(orderId, cdkCode) {
+            if (!confirm(`确定删除订单 #${orderId} 吗？\n\n删除后：\n- CDK ${cdkCode} 将恢复为未使用状态\n- 关联账号将恢复为可用状态`)) {
+                return;
+            }
+
+            showLoading();
+            try {
+                const response = await fetch(`/api/admin/orders/${orderId}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(data.message);
+                    loadOrders();
+                    loadCdks();
+                    loadAccounts();
+                    loadStats();
+                } else {
+                    alert('删除失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        // 批量删除订单
+        async function deleteSelectedOrders() {
+            if (selectedOrders.length === 0) {
+                alert('请选择要删除的订单');
+                return;
+            }
+            if (!confirm(`确定删除选中的 ${selectedOrders.length} 个订单吗？\n\n删除后：\n- 所有CDK将恢复为未使用状态\n- 关联账号将恢复为可用状态`)) {
+                return;
+            }
+
+            showLoading();
+            try {
+                const response = await fetch('/api/admin/orders/batch-delete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ids: selectedOrders})
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(`删除完成: 成功 ${data.success_count} 个，失败 ${data.failed_count} 个`);
+                    selectedOrders = [];
+                    loadOrders();
+                    loadCdks();
+                    loadAccounts();
+                    loadStats();
+                } else {
+                    alert('删除失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+            hideLoading();
         }
 
         // 加载设置
@@ -1690,8 +1761,10 @@
             const checkboxes = document.querySelectorAll(`.${type}-checkbox:checked`);
             if (type === 'cdk') {
                 selectedCDKs = Array.from(checkboxes).map(cb => parseInt(cb.value));
-            } else {
+            } else if (type === 'account') {
                 selectedAccounts = Array.from(checkboxes).map(cb => parseInt(cb.value));
+            } else if (type === 'order') {
+                selectedOrders = Array.from(checkboxes).map(cb => parseInt(cb.value));
             }
         }
 

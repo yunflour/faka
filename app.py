@@ -1585,6 +1585,374 @@ def request_replacement():
     })
 
 
+# ==================== 批量接口 ====================
+
+
+@app.route("/api/redeem/batch", methods=["POST"])
+def redeem_cdk_batch():
+    """批量CDK提卡"""
+    data = request.get_json()
+    cdks_input = data.get("cdks", "").strip()
+
+    if not cdks_input:
+        return jsonify({"success": False, "error": "请输入CDK"}), 400
+
+    # 解析CDK列表（支持换行、逗号、空格分隔）
+    cdks = []
+    for line in cdks_input.replace(",", "\n").replace(";", "\n").split("\n"):
+        cdk = line.strip().upper()
+        if cdk:
+            cdks.append(cdk)
+
+    # 去重
+    cdks = list(dict.fromkeys(cdks))
+
+    if not cdks:
+        return jsonify({"success": False, "error": "未找到有效的CDK"}), 400
+
+    if len(cdks) > 100:
+        return jsonify({"success": False, "error": "单次最多处理100个CDK"}), 400
+
+    db = get_db()
+    warranty_days = int(get_setting("warranty_days", "7"))
+    results = []
+    success_count = 0
+    failed_count = 0
+
+    for cdk_code in cdks:
+        try:
+            cdk = _execute(db, "SELECT * FROM cdks WHERE code = %s", (cdk_code,)).fetchone()
+
+            if not cdk:
+                results.append({"cdk": cdk_code, "success": False, "error": "CDK不存在"})
+                failed_count += 1
+                continue
+
+            if cdk["status"] == "used":
+                # 检查是否有订单
+                order = _execute(db, "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)).fetchone()
+                if order:
+                    acc = _execute(db, "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)).fetchone()
+                    token_data = {}
+                    if acc and acc["token_data"]:
+                        try:
+                            token_data = json.loads(acc["token_data"])
+                        except:
+                            pass
+                    results.append({
+                        "cdk": cdk_code,
+                        "success": True,
+                        "already_used": True,
+                        "order_id": order["id"],
+                        "account": {
+                            "email": acc["email"] if acc else None,
+                            "access_token": acc["access_token"] if acc else None,
+                            "refresh_token": acc["refresh_token"] if acc else None,
+                            "id_token": acc["id_token"] if acc else None,
+                            "token_data": token_data,
+                        } if acc else None,
+                        "message": "CDK已使用，返回已有订单"
+                    })
+                    success_count += 1
+                else:
+                    results.append({"cdk": cdk_code, "success": False, "error": "CDK已被使用但无订单记录"})
+                    failed_count += 1
+                continue
+
+            # 获取绑定的账号或分配一个可用账号
+            account_id = cdk["account_id"]
+            if not account_id:
+                available_account = _execute(db,
+                    "SELECT * FROM accounts WHERE status = 'available' AND id NOT IN "
+                    "(SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL) LIMIT 1"
+                ).fetchone()
+                if not available_account:
+                    results.append({"cdk": cdk_code, "success": False, "error": "暂无可用账号"})
+                    failed_count += 1
+                    continue
+                account_id = available_account["id"]
+                account = available_account
+            else:
+                account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
+                if not account:
+                    results.append({"cdk": cdk_code, "success": False, "error": "绑定的账号不存在"})
+                    failed_count += 1
+                    continue
+
+            if account["status"] == "blocked":
+                results.append({"cdk": cdk_code, "success": False, "error": "绑定的账号已被封禁"})
+                failed_count += 1
+                continue
+
+            # 创建订单
+            warranty_expires = datetime.now() + timedelta(days=warranty_days)
+            _execute(db,
+                """INSERT INTO orders
+                   (cdk_code, account_id, user_ip, warranty_days, warranty_expires_at, status)
+                   VALUES (%s, %s, %s, %s, %s, 'active')""",
+                (cdk_code, account_id, request.remote_addr, warranty_days, warranty_expires.isoformat()),
+            )
+
+            # 更新CDK状态
+            _execute(db,
+                "UPDATE cdks SET status = 'used', used_at = %s, used_by = %s, account_id = %s WHERE code = %s",
+                (datetime.now().isoformat(), request.remote_addr, account_id, cdk_code),
+            )
+
+            # 获取订单ID
+            order = _execute(db, "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)).fetchone()
+
+            # 解析token数据
+            token_data = {}
+            if account["token_data"]:
+                try:
+                    token_data = json.loads(account["token_data"])
+                except:
+                    pass
+
+            results.append({
+                "cdk": cdk_code,
+                "success": True,
+                "order_id": order["id"],
+                "account": {
+                    "email": account["email"],
+                    "access_token": account["access_token"],
+                    "refresh_token": account["refresh_token"],
+                    "id_token": account["id_token"],
+                    "token_data": token_data,
+                },
+                "warranty": {
+                    "days": warranty_days,
+                    "expires_at": warranty_expires.isoformat(),
+                }
+            })
+            success_count += 1
+
+        except Exception as e:
+            results.append({"cdk": cdk_code, "success": False, "error": str(e)})
+            failed_count += 1
+
+    db.commit()
+
+    return jsonify({
+        "success": True,
+        "total": len(cdks),
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "results": results,
+    })
+
+
+@app.route("/api/warranty/check-batch", methods=["POST"])
+def check_warranty_batch():
+    """批量质保查询"""
+    data = request.get_json()
+    cdks_input = data.get("cdks", "").strip()
+
+    if not cdks_input:
+        return jsonify({"success": False, "error": "请输入CDK"}), 400
+
+    # 解析CDK列表
+    cdks = []
+    for line in cdks_input.replace(",", "\n").replace(";", "\n").split("\n"):
+        cdk = line.strip().upper()
+        if cdk:
+            cdks.append(cdk)
+
+    cdks = list(dict.fromkeys(cdks))
+
+    if not cdks:
+        return jsonify({"success": False, "error": "未找到有效的CDK"}), 400
+
+    if len(cdks) > 100:
+        return jsonify({"success": False, "error": "单次最多查询100个CDK"}), 400
+
+    db = get_db()
+    max_replacements = int(get_setting("max_replacements", "3"))
+    results = []
+
+    for cdk_code in cdks:
+        try:
+            order = _execute(db, "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)).fetchone()
+
+            if not order:
+                results.append({"cdk": cdk_code, "success": False, "error": "订单不存在"})
+                continue
+
+            account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)).fetchone()
+
+            # 简单检查账号状态（不调用外部API，直接使用数据库状态）
+            warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
+            in_warranty = datetime.now() < warranty_expires
+
+            results.append({
+                "cdk": cdk_code,
+                "success": True,
+                "order": {
+                    "id": order["id"],
+                    "cdk_code": order["cdk_code"],
+                    "status": order["status"],
+                    "warranty_days": order["warranty_days"],
+                    "warranty_expires_at": order["warranty_expires_at"],
+                    "replacement_count": order["replacement_count"],
+                },
+                "account": {
+                    "email": account["email"] if account else None,
+                    "status": account["status"] if account else None,
+                } if account else None,
+                "warranty": {
+                    "in_warranty": in_warranty,
+                    "can_replace": in_warranty and order["replacement_count"] < max_replacements and account and account["status"] == "blocked",
+                    "max_replacements": max_replacements,
+                }
+            })
+
+        except Exception as e:
+            results.append({"cdk": cdk_code, "success": False, "error": str(e)})
+
+    return jsonify({
+        "success": True,
+        "total": len(cdks),
+        "results": results,
+    })
+
+
+@app.route("/api/warranty/replace-batch", methods=["POST"])
+def request_replacement_batch():
+    """批量质保替换"""
+    data = request.get_json()
+    cdks_input = data.get("cdks", "").strip()
+
+    if not cdks_input:
+        return jsonify({"success": False, "error": "请输入CDK"}), 400
+
+    # 解析CDK列表
+    cdks = []
+    for line in cdks_input.replace(",", "\n").replace(";", "\n").split("\n"):
+        cdk = line.strip().upper()
+        if cdk:
+            cdks.append(cdk)
+
+    cdks = list(dict.fromkeys(cdks))
+
+    if not cdks:
+        return jsonify({"success": False, "error": "未找到有效的CDK"}), 400
+
+    if len(cdks) > 50:
+        return jsonify({"success": False, "error": "单次最多替换50个CDK"}), 400
+
+    db = get_db()
+    max_replacements = int(get_setting("max_replacements", "3"))
+    results = []
+    success_count = 0
+    failed_count = 0
+
+    for cdk_code in cdks:
+        try:
+            order = _execute(db, "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)).fetchone()
+
+            if not order:
+                results.append({"cdk": cdk_code, "success": False, "error": "订单不存在"})
+                failed_count += 1
+                continue
+
+            # 检查质保期
+            warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
+            if datetime.now() >= warranty_expires:
+                results.append({"cdk": cdk_code, "success": False, "error": "质保已过期"})
+                failed_count += 1
+                continue
+
+            # 检查替换次数
+            if order["replacement_count"] >= max_replacements:
+                results.append({"cdk": cdk_code, "success": False, "error": "已超出最大替换次数"})
+                failed_count += 1
+                continue
+
+            # 检查账号是否被封禁
+            account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)).fetchone()
+            if not account:
+                results.append({"cdk": cdk_code, "success": False, "error": "账号不存在"})
+                failed_count += 1
+                continue
+
+            if account["status"] != "blocked":
+                results.append({"cdk": cdk_code, "success": False, "error": f"账号状态为{account['status']}，无需替换"})
+                failed_count += 1
+                continue
+
+            old_account_id = order["account_id"]
+
+            # 查找新的可用账号
+            new_account = _execute(db,
+                """SELECT * FROM accounts WHERE status = 'available'
+                   AND id != %s AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)
+                   LIMIT 1""",
+                (old_account_id,)
+            ).fetchone()
+
+            if not new_account:
+                results.append({"cdk": cdk_code, "success": False, "error": "暂无可用账号"})
+                failed_count += 1
+                continue
+
+            new_account_id = new_account["id"]
+
+            # 更新订单
+            _execute(db,
+                """UPDATE orders SET account_id = %s, replacement_count = replacement_count + 1
+                   WHERE id = %s""",
+                (new_account_id, order["id"])
+            )
+
+            # 记录替换历史
+            _execute(db,
+                """INSERT INTO replacements (order_id, old_account_id, new_account_id, reason)
+                   VALUES (%s, %s, %s, %s)""",
+                (order["id"], old_account_id, new_account_id, "账号被封禁")
+            )
+
+            # 标记旧账号
+            _execute(db, "UPDATE accounts SET status = 'blocked' WHERE id = %s", (old_account_id,))
+
+            # 解析token数据
+            token_data = {}
+            if new_account["token_data"]:
+                try:
+                    token_data = json.loads(new_account["token_data"])
+                except:
+                    pass
+
+            results.append({
+                "cdk": cdk_code,
+                "success": True,
+                "order_id": order["id"],
+                "new_account": {
+                    "email": new_account["email"],
+                    "access_token": new_account["access_token"],
+                    "refresh_token": new_account["refresh_token"],
+                    "id_token": new_account["id_token"],
+                    "token_data": token_data,
+                },
+                "replacement_count": order["replacement_count"] + 1,
+            })
+            success_count += 1
+
+        except Exception as e:
+            results.append({"cdk": cdk_code, "success": False, "error": str(e)})
+            failed_count += 1
+
+    db.commit()
+
+    return jsonify({
+        "success": True,
+        "total": len(cdks),
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "results": results,
+    })
+
+
 # ==================== 管理员路由 ====================
 
 
@@ -2218,6 +2586,108 @@ def admin_orders():
         "total": total,
         "page": page,
         "per_page": per_page,
+    })
+
+
+@app.route("/api/admin/orders/<int:order_id>", methods=["DELETE"])
+@admin_required
+def delete_order(order_id):
+    """删除订单并恢复CDK和账号"""
+    db = get_db()
+
+    # 获取订单信息
+    order = _execute(db, "SELECT * FROM orders WHERE id = %s", (order_id,)).fetchone()
+    if not order:
+        return jsonify({"success": False, "error": "订单不存在"}), 404
+
+    cdk_code = order["cdk_code"]
+    account_id = order["account_id"]
+
+    # 删除替换记录
+    _execute(db, "DELETE FROM replacements WHERE order_id = %s", (order_id,))
+
+    # 删除订单
+    _execute(db, "DELETE FROM orders WHERE id = %s", (order_id,))
+
+    # 恢复CDK状态为未使用
+    _execute(db,
+        "UPDATE cdks SET status = 'unused', used_at = NULL, used_by = NULL, account_id = NULL WHERE code = %s",
+        (cdk_code,)
+    )
+    # 账号无需修改状态，分配逻辑已排除已有订单的账号
+
+    db.commit()
+
+    return jsonify({
+        "success": True,
+        "message": f"订单 #{order_id} 已删除，CDK {cdk_code} 已恢复为未使用状态",
+        "restored_cdk": cdk_code,
+        "restored_account_id": account_id,
+    })
+
+
+@app.route("/api/admin/orders/batch-delete", methods=["POST"])
+@admin_required
+def delete_orders_batch():
+    """批量删除订单"""
+    data = request.get_json()
+    order_ids = data.get("ids", [])
+
+    if not order_ids:
+        return jsonify({"success": False, "error": "请选择要删除的订单"}), 400
+
+    if len(order_ids) > 100:
+        return jsonify({"success": False, "error": "单次最多删除100个订单"}), 400
+
+    db = get_db()
+    results = []
+    success_count = 0
+    failed_count = 0
+
+    for order_id in order_ids:
+        try:
+            order = _execute(db, "SELECT * FROM orders WHERE id = %s", (order_id,)).fetchone()
+            if not order:
+                results.append({"order_id": order_id, "success": False, "error": "订单不存在"})
+                failed_count += 1
+                continue
+
+            cdk_code = order["cdk_code"]
+            account_id = order["account_id"]
+
+            # 删除替换记录
+            _execute(db, "DELETE FROM replacements WHERE order_id = %s", (order_id,))
+
+            # 删除订单
+            _execute(db, "DELETE FROM orders WHERE id = %s", (order_id,))
+
+            # 恢复CDK状态
+            _execute(db,
+                "UPDATE cdks SET status = 'unused', used_at = NULL, used_by = NULL, account_id = NULL WHERE code = %s",
+                (cdk_code,)
+            )
+            # 账号无需修改状态，分配逻辑已排除已有订单的账号
+
+            results.append({
+                "order_id": order_id,
+                "success": True,
+                "cdk": cdk_code,
+                "restored_account_id": account_id
+            })
+            success_count += 1
+
+        except Exception as e:
+            results.append({"order_id": order_id, "success": False, "error": str(e)})
+            failed_count += 1
+
+    db.commit()
+
+    return jsonify({
+        "success": True,
+        "total": len(order_ids),
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "results": results,
     })
 
 
