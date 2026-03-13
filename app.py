@@ -896,6 +896,170 @@ def get_unordered_account(account_id: int, db) -> Optional[dict[str, Any]]:
     ).fetchone()
 
 
+def query_account_quota(account_id: int, db=None) -> dict[str, Any]:
+    """查询账号余额/额度信息"""
+    if db is None:
+        db = get_db()
+    account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
+
+    if not account:
+        return {"success": False, "error": "账号不存在", "status": "not_found"}
+
+    ctx = resolve_account_verification_context(account)
+    access_token = ctx["access_token"]
+    refreshed_access_token = None
+    refreshed_refresh_token = None
+    refreshed_id_token = None
+    refresh_result = None
+
+    # 尝试刷新token
+    if ctx["refresh_token"] and ctx["client_id"] and ctx["client_secret"] and ctx["region"]:
+        refresh_result = refresh_access_token(
+            refresh_token=ctx["refresh_token"],
+            client_id=ctx["client_id"],
+            client_secret=ctx["client_secret"],
+            idc_region=ctx["region"],
+        )
+        if refresh_result.get("ok") and isinstance(refresh_result.get("response_json"), dict):
+            refreshed_access_token = _pick_first_nonempty(refresh_result["response_json"].get("accessToken"))
+            refreshed_refresh_token = _pick_first_nonempty(refresh_result["response_json"].get("refreshToken"))
+            refreshed_id_token = _pick_first_nonempty(refresh_result["response_json"].get("idToken"))
+            if refreshed_access_token:
+                access_token = refreshed_access_token
+
+    if not access_token:
+        return {"success": False, "error": "无可用访问令牌", "status": "missing_access_token"}
+
+    # 确定API region
+    api_region = _pick_first_nonempty(
+        _extract_region_from_profile_arn(ctx["profile_arn"]),
+        CONFIG["verification"].get("idc_region"),
+        "us-east-1",
+    )
+
+    # 调用 GetUsageLimits API
+    try:
+        headers = {
+            "Content-Type": "application/x-amz-json-1.0",
+            "x-amz-target": "AmazonCodeWhispererService.GetUsageLimits",
+            "Authorization": f"Bearer {access_token}",
+        }
+        payload = {
+            "origin": "AI_EDITOR",
+            "resourceType": "AGENTIC_REQUEST",
+        }
+        url = f"https://codewhisperer.{api_region}.amazonaws.com"
+        resp = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=CONFIG["verification"]["timeout_seconds"],
+        )
+
+        response_json = None
+        try:
+            response_json = resp.json()
+        except Exception:
+            pass
+
+        # 更新token到数据库
+        token_payload = _parse_token_data(account["token_data"])
+        if refreshed_access_token and ("access_token" in token_payload):
+            token_payload["access_token"] = refreshed_access_token
+        if refreshed_refresh_token and ("refresh_token" in token_payload):
+            token_payload["refresh_token"] = refreshed_refresh_token
+        if refreshed_id_token and ("id_token" in token_payload):
+            token_payload["id_token"] = refreshed_id_token
+        token_data_json = json.dumps(token_payload, ensure_ascii=False) if token_payload else account["token_data"]
+
+        _execute(
+            db,
+            """UPDATE accounts
+               SET access_token = %s, refresh_token = %s, id_token = %s, token_data = %s, last_verified_at = %s
+               WHERE id = %s""",
+            (
+                refreshed_access_token or account["access_token"],
+                refreshed_refresh_token or account["refresh_token"],
+                refreshed_id_token or account["id_token"],
+                token_data_json,
+                datetime.now().isoformat(),
+                account_id,
+            ),
+        )
+        db.commit()
+
+        if not resp.ok:
+            # 解析错误信息
+            error_reason = ""
+            error_message = ""
+            if isinstance(response_json, dict):
+                error_reason = response_json.get("reason", "")
+                error_message = response_json.get("message", "")
+            return {
+                "success": False,
+                "error": error_message or f"HTTP {resp.status_code}",
+                "reason": error_reason,
+                "status_code": resp.status_code,
+                "response": response_json,
+            }
+
+        # 解析成功响应
+        quota_info = {
+            "success": True,
+            "account_id": account_id,
+            "email": account["email"],
+            "status_code": resp.status_code,
+        }
+
+        if isinstance(response_json, dict):
+            # 订阅信息
+            sub_info = response_json.get("subscriptionInfo", {})
+            quota_info["subscription_title"] = sub_info.get("subscriptionTitle", "Unknown")
+            quota_info["subscription_type"] = sub_info.get("type", "")
+
+            # 额度信息
+            usage_list = response_json.get("usageBreakdownList", [])
+            if usage_list:
+                for usage in usage_list:
+                    if usage.get("resourceType") == "CREDIT":
+                        quota_info["credit_limit"] = usage.get("usageLimitWithPrecision", 0)
+                        quota_info["credit_used"] = usage.get("currentUsageWithPrecision", 0)
+                        quota_info["credit_remaining"] = quota_info["credit_limit"] - quota_info["credit_used"]
+
+                        # 免费试用信息
+                        trial_info = usage.get("freeTrialInfo")
+                        if trial_info:
+                            quota_info["trial_status"] = trial_info.get("freeTrialStatus", "")
+                            quota_info["trial_limit"] = trial_info.get("usageLimitWithPrecision", 0)
+                            quota_info["trial_used"] = trial_info.get("currentUsageWithPrecision", 0)
+                            quota_info["trial_remaining"] = quota_info["trial_limit"] - quota_info["trial_used"]
+                            trial_expiry = trial_info.get("freeTrialExpiry")
+                            if trial_expiry:
+                                quota_info["trial_expiry"] = datetime.fromtimestamp(trial_expiry).strftime("%Y-%m-%d %H:%M:%S")
+
+                        # 重置时间
+                        next_reset = usage.get("nextDateReset") or response_json.get("nextDateReset")
+                        if next_reset:
+                            quota_info["next_reset"] = datetime.fromtimestamp(next_reset).strftime("%Y-%m-%d %H:%M:%S")
+                        break
+
+            # 用户信息
+            user_info = response_json.get("userInfo", {})
+            quota_info["user_id"] = user_info.get("userId", "")
+
+            # 原始响应（供调试）
+            quota_info["raw_response"] = response_json
+
+        return quota_info
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "status": "request_failed",
+        }
+
+
 def warmup_account(account_id: int, db=None) -> dict[str, Any]:
     """对未出单账号执行一次简单对话预热。"""
     if db is None:
@@ -1849,6 +2013,15 @@ def warmup_single_account(account_id):
     status_code = 200 if result.get("success") else 400
     if result.get("status") == "request_failed":
         status_code = 502
+    return jsonify(result), status_code
+
+
+@app.route("/api/admin/accounts/<int:account_id>/quota", methods=["POST"])
+@admin_required
+def query_account_balance(account_id):
+    """查询账号余额/额度"""
+    result = query_account_quota(account_id)
+    status_code = 200 if result.get("success") else 400
     return jsonify(result), status_code
 
 
