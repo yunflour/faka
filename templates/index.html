@@ -835,29 +835,42 @@
         }
 
         function downloadBatchJson(items) {
-            // 批量导出时，仅保留每个账号的原始 token_data 结构，与单个下载格式一致
-            const data = items.map(item => {
+            // 每个账号下载单独的JSON文件
+            items.forEach((item, index) => {
                 const acc = item.account || {};
+                let data;
                 // 如果有原始 token_data，优先使用
                 if (acc.token_data) {
                     try {
-                        return typeof acc.token_data === 'string' ? JSON.parse(acc.token_data) : acc.token_data;
-                    } catch (e) {}
+                        data = typeof acc.token_data === 'string' ? JSON.parse(acc.token_data) : acc.token_data;
+                    } catch (e) {
+                        data = {
+                            access_token: acc.access_token || '-',
+                            refresh_token: acc.refresh_token || '-',
+                            email: acc.email || '-'
+                        };
+                    }
+                } else {
+                    data = {
+                        access_token: acc.access_token || '-',
+                        refresh_token: acc.refresh_token || '-',
+                        email: acc.email || '-'
+                    };
                 }
-                // 否则使用兜底字段
-                return {
-                    access_token: acc.access_token || '-',
-                    refresh_token: acc.refresh_token || '-',
-                    email: acc.email || '-'
-                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                // 使用邮箱或CDK作为文件名
+                const filename = acc.email ? acc.email.split('@')[0] : item.cdk || `account_${index + 1}`;
+                a.download = `${filename}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                // 稍微延迟避免浏览器阻止多个下载
+                if (index < items.length - 1) {
+                    setTimeout(() => {}, 100);
+                }
             });
-            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `batch_accounts_${Date.now()}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
         }
 
         // 批量质保查询
