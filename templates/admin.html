@@ -874,19 +874,23 @@
                         <h3>账号</h3>
                         <div class="value">${data.accounts.total}</div>
                         <div class="sub-stats">
-                            可用: ${data.accounts.available} | 封禁: ${data.accounts.blocked}
+                            可用: ${data.accounts.available} | 封禁: ${data.accounts.blocked}<br>
+                            空闲: ${data.accounts.idle}
                         </div>
                     </div>
                     <div class="stat-card">
                         <h3>订单</h3>
                         <div class="value">${data.orders.total}</div>
                         <div class="sub-stats">
-                            有效订单: ${data.orders.active}
+                            有效: ${data.orders.active} | 质保内: ${data.orders.in_warranty}
                         </div>
                     </div>
                     <div class="stat-card">
                         <h3>替换记录</h3>
                         <div class="value">${data.replacements}</div>
+                        <div class="sub-stats">
+                            极限账号需: ${data.max_needed_accounts}
+                        </div>
                     </div>
                 `;
             } catch (error) {

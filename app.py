@@ -2010,10 +2010,31 @@ def admin_stats():
         "SELECT COUNT(*) as cnt FROM accounts WHERE status = 'blocked'"
     ).fetchone()["cnt"]
 
+    # 空闲账号：可用且未被订单占用
+    idle_accounts = _execute(db,
+        "SELECT COUNT(*) as cnt FROM accounts WHERE status = 'available' "
+        "AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)"
+    ).fetchone()["cnt"]
+
     total_orders = _execute(db, "SELECT COUNT(*) as cnt FROM orders").fetchone()["cnt"]
     active_orders = _execute(db,
         "SELECT COUNT(*) as cnt FROM orders WHERE status = 'active'"
     ).fetchone()["cnt"]
+
+    # 质保内订单：状态为active且质保未过期
+    warranty_orders = _execute(db,
+        "SELECT COUNT(*) as cnt FROM orders WHERE status = 'active' AND warranty_expires_at > NOW()"
+    ).fetchone()["cnt"]
+
+    # 极限账号数：质保内订单都用完替换次数所需的额外账号数
+    max_replacements = int(get_setting("max_replacements", "3"))
+    warranty_order_replacements = _execute(db,
+        "SELECT COALESCE(SUM(replacement_count), 0) as total FROM orders "
+        "WHERE status = 'active' AND warranty_expires_at > NOW()"
+    ).fetchone()["total"]
+    # 每个质保内订单最多可替换 max_replacements 次，已替换 replacement_count 次
+    # 极限还需账号数 = 质保内订单数 * max_replacements - 已替换总次数
+    max_needed_accounts = warranty_orders * max_replacements - warranty_order_replacements
 
     total_replacements = _execute(db, "SELECT COUNT(*) as cnt FROM replacements").fetchone()["cnt"]
 
@@ -2027,11 +2048,14 @@ def admin_stats():
             "total": total_accounts,
             "available": available_accounts,
             "blocked": blocked_accounts,
+            "idle": idle_accounts,
         },
         "orders": {
             "total": total_orders,
             "active": active_orders,
+            "in_warranty": warranty_orders,
         },
+        "max_needed_accounts": max_needed_accounts,
         "replacements": total_replacements,
     })
 
