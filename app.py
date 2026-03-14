@@ -2648,8 +2648,28 @@ def admin_orders():
     else:
         total = _execute(db, count_query).fetchone()["cnt"]
 
+    # 动态判断订单状态（根据质保到期时间）
+    now = datetime.now()
+    orders_list = []
+    for order in orders:
+        order_dict = dict(order)
+        # 根据质保到期时间动态判断状态
+        warranty_expires = order_dict.get("warranty_expires_at")
+        if warranty_expires:
+            try:
+                expires_dt = datetime.fromisoformat(str(warranty_expires))
+                if now >= expires_dt:
+                    order_dict["effective_status"] = "expired"
+                else:
+                    order_dict["effective_status"] = "active"
+            except:
+                order_dict["effective_status"] = order_dict.get("status", "active")
+        else:
+            order_dict["effective_status"] = order_dict.get("status", "active")
+        orders_list.append(order_dict)
+
     return jsonify({
-        "orders": [dict(order) for order in orders],
+        "orders": orders_list,
         "total": total,
         "page": page,
         "per_page": per_page,

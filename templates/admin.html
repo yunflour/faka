@@ -1620,6 +1620,8 @@
                                               (order.account_status === 'blocked' ? '封禁' :
                                               (order.account_status === 'unknown' ? '未知' : '-'));
                     const accountStatusClass = order.account_status || '';
+                    // 使用动态计算的effective_status
+                    const effectiveStatus = order.effective_status || order.status;
                     return `
                     <tr>
                         <td><input type="checkbox" class="order-checkbox" value="${order.id}" data-cdk="${order.cdk_code}" onchange="updateSelection('order')"></td>
@@ -1627,7 +1629,7 @@
                         <td><code>${order.cdk_code}</code></td>
                         <td>${order.account_email || '-'}</td>
                         <td><span class="status-badge ${accountStatusClass}">${accountStatusText}</span></td>
-                        <td><span class="status-badge ${order.status}">${order.status === 'active' ? '有效' : '过期'}</span></td>
+                        <td><span class="status-badge ${effectiveStatus}">${effectiveStatus === 'active' ? '有效' : '过期'}</span></td>
                         <td>${order.warranty_days}天</td>
                         <td>${new Date(order.warranty_expires_at).toLocaleString()}</td>
                         <td>${order.replacement_count}</td>
