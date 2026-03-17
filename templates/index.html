@@ -485,11 +485,15 @@
             });
         }
 
-        function downloadOrderJson(orderId) {
-            window.open(`/api/order/${orderId}/download`, '_blank');
+        function downloadOrderJson(orderId, format) {
+            if (format === 'kiro') {
+                window.open(`/api/order/${orderId}/download/kiro`, '_blank');
+            } else {
+                window.open(`/api/order/${orderId}/download`, '_blank');
+            }
         }
 
-        async function redeemCDK() {
+async function redeemCDK() {
             const cdk = document.getElementById('cdk-input').value.trim();
             if (!cdk) {
                 alert('请输入CDK码');
@@ -518,7 +522,11 @@
                             <h3>CDK已使用</h3>
                             <p>此CDK已于之前使用，订单号: ${data.order_id}</p>
                             <button class="btn btn-primary" style="margin-top:15px" onclick="viewOrder(${data.order_id})">查看订单详情</button>
-                            <button class="btn btn-success" style="margin-top:10px" onclick="downloadOrderJson(${data.order_id})">下载JSON文件</button>
+                            <select class="btn btn-success" style="margin-top:10px" onchange="downloadOrderJson(${data.order_id}, this.value)">
+                                <option value="">下载JSON</option>
+                                <option value="cpa">CPA格式</option>
+                                <option value="kiro">Kiro Account Manager</option>
+                            </select>
                         `;
                     } else {
                         const acc = data.account;
@@ -552,7 +560,11 @@
                                 ` : ''}
                             </div>
                             <button class="btn btn-success" style="margin-top:15px" onclick="copyAllTokens(${JSON.stringify(acc).replace(/"/g, '&quot;')})">复制全部信息</button>
-                            <button class="btn btn-success" style="margin-top:10px" onclick="downloadOrderJson(${data.order_id})">下载JSON文件</button>
+                            <select class="btn btn-success" style="margin-top:10px" onchange="downloadOrderJson(${data.order_id}, this.value)">
+                                <option value="">下载JSON</option>
+                                <option value="cpa">CPA格式</option>
+                                <option value="kiro">Kiro Account Manager</option>
+                            </select>
                         `;
                     }
                 } else {
@@ -602,7 +614,11 @@
                             ` : ''}
                         </div>
                         ` : ''}
-                        <button class="btn btn-success" style="margin-top:15px" onclick="downloadOrderJson(${order.id})">下载JSON文件</button>
+                        <select class="btn btn-success" style="margin-top:15px" onchange="downloadOrderJson(${order.id}, this.value)">
+                                <option value="">下载JSON</option>
+                                <option value="cpa">CPA格式</option>
+                                <option value="kiro">Kiro Account Manager</option>
+                            </select>
                     `;
                 }
             } catch (error) {
@@ -721,7 +737,11 @@
                             ` : ''}
                         </div>
                         <button class="btn btn-success" style="margin-top:15px" onclick="copyAllTokens(${JSON.stringify(acc).replace(/"/g, '&quot;')})">复制全部信息</button>
-                        <button class="btn btn-success" style="margin-top:10px" onclick="downloadOrderJson(${data.order_id})">下载JSON文件</button>
+                        <select class="btn btn-success" style="margin-top:10px" onchange="downloadOrderJson(${data.order_id}, this.value)">
+                                <option value="">下载JSON</option>
+                                <option value="cpa">CPA格式</option>
+                                <option value="kiro">Kiro Account Manager</option>
+                            </select>
                     `;
                 } else {
                     result.className = 'result error';
@@ -804,7 +824,11 @@
                         html += `
                             <div class="batch-actions">
                                 <button class="btn btn-success" onclick="copyBatchResults(${JSON.stringify(successItems).replace(/"/g, '&quot;')})">复制全部账号</button>
-                                <button class="btn btn-primary" onclick="downloadBatchJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')})">下载JSON</button>
+                                <select class="btn btn-primary" style="padding: 6px 12px;" onchange="downloadBatchJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')}, this.value)">
+                                    <option value="">下载JSON</option>
+                                    <option value="cpa">CPA格式</option>
+                                    <option value="kiro">Kiro Account Manager</option>
+                                </select>
                             </div>
                         `;
                     }
@@ -834,13 +858,17 @@
             navigator.clipboard.writeText(text).then(() => alert('已复制全部账号信息'));
         }
 
-        function downloadBatchJson(items) {
+        function downloadBatchJson(items, format) {
             // 每个账号调用后端下载接口，保证格式与单次下载一致
             items.forEach((item, index) => {
                 if (item.order_id) {
                     // 延迟调用避免浏览器阻止多个下载
                     setTimeout(() => {
-                        window.open(`/api/order/${item.order_id}/download`, '_blank');
+                        if (format === 'kiro') {
+                            window.open(`/api/order/${item.order_id}/download/kiro`, '_blank');
+                        } else {
+                            window.open(`/api/order/${item.order_id}/download`, '_blank');
+                        }
                     }, index * 200);
                 }
             });

@@ -627,12 +627,14 @@
             </div>
             <div class="card">
                 <div class="filter-bar">
+                    <input type="text" id="account-email-search" placeholder="搜索邮箱..." style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; width: 200px;" onkeyup="if(event.key==='Enter')loadAccounts()">
                     <select id="account-status-filter" onchange="loadAccounts()">
                         <option value="">全部状态</option>
                         <option value="available">可用</option>
                         <option value="blocked">已封禁</option>
                         <option value="unknown">未知</option>
                     </select>
+                    <button class="btn btn-primary btn-sm" onclick="loadAccounts()">搜索</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteSelectedAccounts()">删除选中</button>
                 </div>
                 <table>
@@ -1061,9 +1063,12 @@
         async function loadAccounts(page = 1) {
             currentAccountPage = page;
             const status = document.getElementById('account-status-filter').value;
+            const email = document.getElementById('account-email-search').value.trim();
 
             try {
-                const response = await fetch(`/api/admin/accounts?page=${page}&status=${status}`);
+                const params = new URLSearchParams({ page, status });
+                if (email) params.append('email', email);
+                const response = await fetch(`/api/admin/accounts?${params.toString()}`);
                 const data = await response.json();
 
                 const tbody = document.getElementById('accounts-table-body');

@@ -1439,6 +1439,37 @@ def download_order_json(order_id):
     )
 
 
+@app.route("/api/order/<int:order_id>/download/kiro")
+def download_order_kiro(order_id):
+    """下载订单账号JSON，导出格式适配Kiro Account Manager。"""
+    db = get_db()
+    order = _execute(db, "SELECT * FROM orders WHERE id = %s", (order_id,)).fetchone()
+    if not order:
+        return jsonify({"success": False, "error": "订单不存在"}), 404
+
+    account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)).fetchone()
+    if not account:
+        return jsonify({"success": False, "error": "账号不存在"}), 404
+
+    # Kiro Account Manager 格式
+    payload = {
+        "refreshToken": account["refresh_token"] or "",
+        "clientId": "",
+        "clientSecret": "",
+        "provider": "BuilderId"
+    }
+
+    content = json.dumps([payload], ensure_ascii=False, indent=2).encode("utf-8")
+    email_for_name = re.sub(r"[^A-Za-z0-9@._-]+", "_", str(account["email"] or "unknown").strip())
+    filename = f"{email_for_name}_{order_id}_kiro.json"
+    return send_file(
+        io.BytesIO(content),
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/json",
+    )
+
+
 @app.route("/api/warranty/check", methods=["POST"])
 def check_warranty():
     """检查质保状态"""
@@ -2294,23 +2325,34 @@ def admin_accounts():
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 20))
         status = request.args.get("status", "")
+        email_search = request.args.get("email", "").strip()
 
         offset = (page - 1) * per_page
 
         query = "SELECT id, email, status, last_verified_at, created_at FROM accounts"
         params = []
+        where_conditions = []
+
         if status:
-            query += " WHERE status = %s"
+            where_conditions.append("status = %s")
             params.append(status)
+        if email_search:
+            where_conditions.append("email LIKE %s")
+            params.append(f"%{email_search}%")
+
+        if where_conditions:
+            query += " WHERE " + " AND ".join(where_conditions)
         query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
         params.extend([per_page, offset])
 
         accounts = _execute(db, query, params).fetchall()
 
         count_query = "SELECT COUNT(*) as cnt FROM accounts"
-        if status:
-            count_query += " WHERE status = %s"
-            total = _execute(db, count_query, [status]).fetchone()["cnt"]
+        count_params = []
+        if where_conditions:
+            count_query += " WHERE " + " AND ".join(where_conditions)
+            count_params = params[:-2]  # 排除 LIMIT 和 OFFSET 参数
+            total = _execute(db, count_query, count_params).fetchone()["cnt"]
         else:
             total = _execute(db, count_query).fetchone()["cnt"]
 
