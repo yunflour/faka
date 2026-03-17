@@ -1451,11 +1451,20 @@ def download_order_kiro(order_id):
     if not account:
         return jsonify({"success": False, "error": "账号不存在"}), 404
 
+    token_data = _parse_token_data(account["token_data"])
+
+    # 从 token_data 获取 client_id 和 client_secret
+    client_id = ""
+    client_secret = ""
+    if token_data:
+        client_id = token_data.get("client_id") or token_data.get("clientId") or ""
+        client_secret = token_data.get("client_secret") or token_data.get("clientSecret") or ""
+
     # Kiro Account Manager 格式
     payload = {
         "refreshToken": account["refresh_token"] or "",
-        "clientId": "",
-        "clientSecret": "",
+        "clientId": client_id,
+        "clientSecret": client_secret,
         "provider": "BuilderId"
     }
 
