@@ -549,11 +549,13 @@
             </div>
             <div class="card">
                 <div class="filter-bar">
+                    <input type="text" id="cdk-search-input" placeholder="搜索CDK码..." style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; width: 200px;" onkeyup="if(event.keyCode===13)loadCdks()">
                     <select id="cdk-status-filter" onchange="loadCdks()">
                         <option value="">全部状态</option>
                         <option value="unused">未使用</option>
                         <option value="used">已使用</option>
                     </select>
+                    <button class="btn btn-secondary btn-sm" onclick="loadCdks()">搜索</button>
                     <button class="btn btn-secondary btn-sm" onclick="copySelectedCDKs()">复制选中</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteSelectedCDKs()">删除选中</button>
                 </div>
@@ -904,9 +906,13 @@
         async function loadCdks(page = 1) {
             currentCDKPage = page;
             const status = document.getElementById('cdk-status-filter').value;
+            const search = document.getElementById('cdk-search-input').value.trim();
 
             try {
-                const response = await fetch(`/api/admin/cdks?page=${page}&status=${status}`);
+                const params = new URLSearchParams({page, per_page: 20});
+                if (status) params.append('status', status);
+                if (search) params.append('search', search);
+                const response = await fetch(`/api/admin/cdks?${params.toString()}`);
                 const data = await response.json();
 
                 const tbody = document.getElementById('cdks-table-body');

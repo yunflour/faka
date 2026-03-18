@@ -2259,23 +2259,34 @@ def admin_cdks():
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 20))
         status = request.args.get("status", "")
+        search = request.args.get("search", "").strip()
 
         offset = (page - 1) * per_page
 
         query = "SELECT * FROM cdks"
         params = []
+        where_conditions = []
+
         if status:
-            query += " WHERE status = %s"
+            where_conditions.append("status = %s")
             params.append(status)
+        if search:
+            where_conditions.append("code LIKE %s")
+            params.append(f"%{search}%")
+
+        if where_conditions:
+            query += " WHERE " + " AND ".join(where_conditions)
         query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
         params.extend([per_page, offset])
 
         cdks = _execute(db, query, params).fetchall()
 
         count_query = "SELECT COUNT(*) as cnt FROM cdks"
-        if status:
-            count_query += " WHERE status = %s"
-            total = _execute(db, count_query, [status]).fetchone()["cnt"]
+        count_params = []
+        if where_conditions:
+            count_query += " WHERE " + " AND ".join(where_conditions)
+            count_params = params[:-2]
+            total = _execute(db, count_query, count_params).fetchone()["cnt"]
         else:
             total = _execute(db, count_query).fetchone()["cnt"]
 
