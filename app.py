@@ -2860,7 +2860,7 @@ def admin_orders():
 @app.route("/api/admin/orders/<int:order_id>", methods=["DELETE"])
 @admin_required
 def delete_order(order_id):
-    """删除订单并恢复CDK和账号"""
+    """删除订单并删除CDK"""
     db = get_db()
 
     # 获取订单信息
@@ -2877,27 +2877,22 @@ def delete_order(order_id):
     # 删除订单
     _execute(db, "DELETE FROM orders WHERE id = %s", (order_id,))
 
-    # 恢复CDK状态为未使用
-    _execute(db,
-        "UPDATE cdks SET status = 'unused', used_at = NULL, used_by = NULL, account_id = NULL WHERE code = %s",
-        (cdk_code,)
-    )
-    # 账号无需修改状态，分配逻辑已排除已有订单的账号
+    # 删除CDK
+    _execute(db, "DELETE FROM cdks WHERE code = %s", (cdk_code,))
 
     db.commit()
 
     return jsonify({
         "success": True,
-        "message": f"订单 #{order_id} 已删除，CDK {cdk_code} 已恢复为未使用状态",
-        "restored_cdk": cdk_code,
-        "restored_account_id": account_id,
+        "message": f"订单 #{order_id} 和 CDK {cdk_code} 已删除",
+        "deleted_cdk": cdk_code,
     })
 
 
 @app.route("/api/admin/orders/batch-delete", methods=["POST"])
 @admin_required
 def delete_orders_batch():
-    """批量删除订单"""
+    """批量删除订单并删除CDK"""
     data = request.get_json()
     order_ids = data.get("ids", [])
 
@@ -2921,7 +2916,6 @@ def delete_orders_batch():
                 continue
 
             cdk_code = order["cdk_code"]
-            account_id = order["account_id"]
 
             # 删除替换记录
             _execute(db, "DELETE FROM replacements WHERE order_id = %s", (order_id,))
@@ -2929,18 +2923,13 @@ def delete_orders_batch():
             # 删除订单
             _execute(db, "DELETE FROM orders WHERE id = %s", (order_id,))
 
-            # 恢复CDK状态
-            _execute(db,
-                "UPDATE cdks SET status = 'unused', used_at = NULL, used_by = NULL, account_id = NULL WHERE code = %s",
-                (cdk_code,)
-            )
-            # 账号无需修改状态，分配逻辑已排除已有订单的账号
+            # 删除CDK
+            _execute(db, "DELETE FROM cdks WHERE code = %s", (cdk_code,))
 
             results.append({
                 "order_id": order_id,
                 "success": True,
                 "cdk": cdk_code,
-                "restored_account_id": account_id
             })
             success_count += 1
 

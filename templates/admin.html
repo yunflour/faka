@@ -1660,7 +1660,7 @@
 
         // 删除单个订单
         async function deleteOrder(orderId, cdkCode) {
-            if (!confirm(`确定删除订单 #${orderId} 吗？\n\n删除后：\n- CDK ${cdkCode} 将恢复为未使用状态\n- 关联账号将恢复为可用状态`)) {
+            if (!confirm(`确定删除订单 #${orderId} 吗？\n\n删除后：\n- CDK ${cdkCode} 将被删除\n- 此操作不可恢复`)) {
                 return;
             }
 
@@ -1692,7 +1692,7 @@
                 alert('请选择要删除的订单');
                 return;
             }
-            if (!confirm(`确定删除选中的 ${selectedOrders.length} 个订单吗？\n\n删除后：\n- 所有CDK将恢复为未使用状态\n- 关联账号将恢复为可用状态`)) {
+            if (!confirm(`确定删除选中的 ${selectedOrders.length} 个订单吗？\n\n删除后：\n- 所有相关CDK将被删除\n- 此操作不可恢复`)) {
                 return;
             }
 
