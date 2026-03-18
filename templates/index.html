@@ -827,7 +827,7 @@ async function redeemCDK() {
                                 <select class="btn btn-primary" style="padding: 6px 12px; color: #fff; background-color: #007bff;" onchange="downloadBatchJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')}, this.value)">
                                     <option value="">下载JSON</option>
                                     <option value="cpa">CPA格式 (多文件)</option>
-                                    <option value="cpa-batch">CPA格式 (单文件)</option>
+                                    <option value="cpa-batch">CPA格式 (单-不可直接导入)</option>
                                     <option value="kiro">Kiro Account Manager (多文件)</option>
                                     <option value="kiro-batch">Kiro Account Manager (单文件)</option>
                                 </select>
@@ -1060,7 +1060,7 @@ async function redeemCDK() {
                                 <select class="btn btn-primary" style="padding: 6px 12px; color: #fff; background-color: #007bff;" onchange="downloadBatchReplacementJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')}, this.value)">
                                     <option value="">下载JSON</option>
                                     <option value="cpa">CPA格式 (多文件)</option>
-                                    <option value="cpa-batch">CPA格式 (单文件)</option>
+                                    <option value="cpa-batch">CPA格式 (单-不可直接导入)</option>
                                     <option value="kiro">Kiro Account Manager (多文件)</option>
                                     <option value="kiro-batch">Kiro Account Manager (单文件)</option>
                                 </select>
