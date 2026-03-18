@@ -826,8 +826,10 @@ async function redeemCDK() {
                                 <button class="btn btn-success" onclick="copyBatchResults(${JSON.stringify(successItems).replace(/"/g, '&quot;')})">复制全部账号</button>
                                 <select class="btn btn-primary" style="padding: 6px 12px; color: #fff; background-color: #007bff;" onchange="downloadBatchJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')}, this.value)">
                                     <option value="">下载JSON</option>
-                                    <option value="cpa">CPA格式</option>
-                                    <option value="kiro">Kiro Account Manager</option>
+                                    <option value="cpa">CPA格式 (多文件)</option>
+                                    <option value="cpa-batch">CPA格式 (单文件)</option>
+                                    <option value="kiro">Kiro Account Manager (多文件)</option>
+                                    <option value="kiro-batch">Kiro Account Manager (单文件)</option>
                                 </select>
                             </div>
                         `;
@@ -859,19 +861,50 @@ async function redeemCDK() {
         }
 
         function downloadBatchJson(items, format) {
-            // 每个账号调用后端下载接口，保证格式与单次下载一致
-            items.forEach((item, index) => {
-                if (item.order_id) {
-                    // 延迟调用避免浏览器阻止多个下载
-                    setTimeout(() => {
-                        if (format === 'kiro') {
-                            window.open(`/api/order/${item.order_id}/download/kiro`, '_blank');
-                        } else {
-                            window.open(`/api/order/${item.order_id}/download`, '_blank');
-                        }
-                    }, index * 200);
-                }
-            });
+            const orderIds = items.filter(item => item.order_id).map(item => item.order_id);
+
+            if (format === 'cpa-batch') {
+                // CPA格式单文件：调用后端批量下载接口
+                fetch('/api/orders/download', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({order_ids: orderIds})
+                }).then(resp => resp.blob()).then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `accounts_batch_${orderIds.length}_${Date.now()}.json`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                }).catch(err => alert('下载失败: ' + err.message));
+            } else if (format === 'kiro-batch') {
+                // Kiro Account Manager格式单文件
+                fetch('/api/orders/download/kiro', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({order_ids: orderIds})
+                }).then(resp => resp.blob()).then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `accounts_kiro_batch_${orderIds.length}_${Date.now()}.json`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                }).catch(err => alert('下载失败: ' + err.message));
+            } else {
+                // 多文件下载：每个账号单独下载
+                items.forEach((item, index) => {
+                    if (item.order_id) {
+                        setTimeout(() => {
+                            if (format === 'kiro') {
+                                window.open(`/api/order/${item.order_id}/download/kiro`, '_blank');
+                            } else {
+                                window.open(`/api/order/${item.order_id}/download`, '_blank');
+                            }
+                        }, index * 200);
+                    }
+                });
+            }
         }
 
         // 批量质保查询
@@ -1024,7 +1057,13 @@ async function redeemCDK() {
                         html += `
                             <div class="batch-actions">
                                 <button class="btn btn-success" onclick="copyBatchReplacements(${JSON.stringify(successItems).replace(/"/g, '&quot;')})">复制全部新账号</button>
-                                <button class="btn btn-primary" onclick="downloadBatchReplacementJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')})">下载JSON</button>
+                                <select class="btn btn-primary" style="padding: 6px 12px; color: #fff; background-color: #007bff;" onchange="downloadBatchReplacementJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')}, this.value)">
+                                    <option value="">下载JSON</option>
+                                    <option value="cpa">CPA格式 (多文件)</option>
+                                    <option value="cpa-batch">CPA格式 (单文件)</option>
+                                    <option value="kiro">Kiro Account Manager (多文件)</option>
+                                    <option value="kiro-batch">Kiro Account Manager (单文件)</option>
+                                </select>
                             </div>
                         `;
                     }
@@ -1054,20 +1093,66 @@ async function redeemCDK() {
             navigator.clipboard.writeText(text).then(() => alert('已复制全部新账号信息'));
         }
 
-        function downloadBatchReplacementJson(items) {
-            const data = items.map(item => ({
-                cdk: item.cdk,
-                order_id: item.order_id,
-                replacement_count: item.replacement_count,
-                new_account: item.new_account
-            }));
-            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `batch_replacements_${Date.now()}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+        function downloadBatchReplacementJson(items, format) {
+            const orderIds = items.map(item => item.order_id);
+
+            if (format === 'cpa-batch') {
+                // CPA格式单文件
+                fetch('/api/orders/download', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({order_ids: orderIds})
+                }).then(resp => resp.blob()).then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `replacements_batch_${orderIds.length}_${Date.now()}.json`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                }).catch(err => alert('下载失败: ' + err.message));
+            } else if (format === 'kiro-batch') {
+                // Kiro Account Manager格式单文件
+                fetch('/api/orders/download/kiro', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({order_ids: orderIds})
+                }).then(resp => resp.blob()).then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `replacements_kiro_batch_${orderIds.length}_${Date.now()}.json`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                }).catch(err => alert('下载失败: ' + err.message));
+            } else if (format === 'kiro' || format === 'cpa') {
+                // 多文件下载
+                items.forEach((item, index) => {
+                    if (item.order_id) {
+                        setTimeout(() => {
+                            if (format === 'kiro') {
+                                window.open(`/api/order/${item.order_id}/download/kiro`, '_blank');
+                            } else {
+                                window.open(`/api/order/${item.order_id}/download`, '_blank');
+                            }
+                        }, index * 200);
+                    }
+                });
+            } else {
+                // 默认格式：原始的替换记录格式
+                const data = items.map(item => ({
+                    cdk: item.cdk,
+                    order_id: item.order_id,
+                    replacement_count: item.replacement_count,
+                    new_account: item.new_account
+                }));
+                const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `batch_replacements_${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
         }
     </script>
 </body>

@@ -1479,6 +1479,125 @@ def download_order_kiro(order_id):
     )
 
 
+@app.route("/api/orders/download", methods=["POST"])
+def download_orders_batch():
+    """批量下载订单账号JSON（CPA格式，单文件合并为数组）"""
+    data = request.get_json()
+    order_ids = data.get("order_ids", [])
+
+    if not order_ids:
+        return jsonify({"success": False, "error": "请提供订单ID"}), 400
+
+    if len(order_ids) > 100:
+        return jsonify({"success": False, "error": "单次最多下载100个订单"}), 400
+
+    db = get_db()
+    payloads = []
+
+    for order_id in order_ids:
+        order = _execute(db, "SELECT * FROM orders WHERE id = %s", (order_id,)).fetchone()
+        if not order:
+            continue
+
+        account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)).fetchone()
+        if not account:
+            continue
+
+        token_data = _parse_token_data(account["token_data"])
+
+        if token_data:
+            payload = dict(token_data)
+        else:
+            payload = {}
+
+        if account["access_token"]:
+            payload["access_token"] = account["access_token"]
+        if account["refresh_token"]:
+            payload["refresh_token"] = account["refresh_token"]
+        if account["id_token"]:
+            payload["id_token"] = account["id_token"]
+        if account["email"]:
+            payload["email"] = account["email"]
+
+        if "auth_method" not in payload:
+            payload["auth_method"] = "builder-id"
+        if "disabled" not in payload:
+            payload["disabled"] = False
+        if "provider" not in payload:
+            payload["provider"] = "AWS"
+        if "start_url" not in payload:
+            payload["start_url"] = "https://view.awsapps.com/start"
+        if "type" not in payload:
+            payload["type"] = "kiro"
+
+        payloads.append(payload)
+
+    if not payloads:
+        return jsonify({"success": False, "error": "没有有效的订单"}), 400
+
+    content = json.dumps(payloads, ensure_ascii=False, indent=2).encode("utf-8")
+    filename = f"accounts_batch_{len(payloads)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    return send_file(
+        io.BytesIO(content),
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/json",
+    )
+
+
+@app.route("/api/orders/download/kiro", methods=["POST"])
+def download_orders_batch_kiro():
+    """批量下载订单账号JSON（Kiro Account Manager格式，单文件合并为数组）"""
+    data = request.get_json()
+    order_ids = data.get("order_ids", [])
+
+    if not order_ids:
+        return jsonify({"success": False, "error": "请提供订单ID"}), 400
+
+    if len(order_ids) > 100:
+        return jsonify({"success": False, "error": "单次最多下载100个订单"}), 400
+
+    db = get_db()
+    payloads = []
+
+    for order_id in order_ids:
+        order = _execute(db, "SELECT * FROM orders WHERE id = %s", (order_id,)).fetchone()
+        if not order:
+            continue
+
+        account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)).fetchone()
+        if not account:
+            continue
+
+        token_data = _parse_token_data(account["token_data"])
+
+        client_id = ""
+        client_secret = ""
+        if token_data:
+            client_id = token_data.get("client_id") or token_data.get("clientId") or ""
+            client_secret = token_data.get("client_secret") or token_data.get("clientSecret") or ""
+
+        payload = {
+            "refreshToken": account["refresh_token"] or "",
+            "clientId": client_id,
+            "clientSecret": client_secret,
+            "provider": "BuilderId"
+        }
+        payloads.append(payload)
+
+    if not payloads:
+        return jsonify({"success": False, "error": "没有有效的订单"}), 400
+
+    content = json.dumps(payloads, ensure_ascii=False, indent=2).encode("utf-8")
+    filename = f"accounts_kiro_batch_{len(payloads)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    return send_file(
+        io.BytesIO(content),
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/json",
+    )
+
+
 @app.route("/api/warranty/check", methods=["POST"])
 def check_warranty():
     """检查质保状态"""
