@@ -826,10 +826,10 @@ async function redeemCDK() {
                                 <button class="btn btn-success" onclick="copyBatchResults(${JSON.stringify(successItems).replace(/"/g, '&quot;')})">复制全部账号</button>
                                 <select class="btn btn-primary" style="padding: 6px 12px; color: #fff; background-color: #007bff;" onchange="downloadBatchJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')}, this.value)">
                                     <option value="">下载JSON</option>
+                                    <option value="kiro-batch" selected>Kiro Account Manager (单文件)</option>
+                                    <option value="kiro">Kiro Account Manager (多文件)</option>
                                     <option value="cpa">CPA格式 (多文件)</option>
                                     <option value="cpa-batch">CPA格式 (单-不可直接导入)</option>
-                                    <option value="kiro">Kiro Account Manager (多文件)</option>
-                                    <option value="kiro-batch" selected>Kiro Account Manager (单文件)</option>
                                 </select>
                             </div>
                         `;
@@ -1059,10 +1059,10 @@ async function redeemCDK() {
                                 <button class="btn btn-success" onclick="copyBatchReplacements(${JSON.stringify(successItems).replace(/"/g, '&quot;')})">复制全部新账号</button>
                                 <select class="btn btn-primary" style="padding: 6px 12px; color: #fff; background-color: #007bff;" onchange="downloadBatchReplacementJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')}, this.value)">
                                     <option value="">下载JSON</option>
+                                    <option value="kiro-batch" selected>Kiro Account Manager (单文件)</option>
+                                    <option value="kiro">Kiro Account Manager (多文件)</option>
                                     <option value="cpa">CPA格式 (多文件)</option>
                                     <option value="cpa-batch">CPA格式 (单-不可直接导入)</option>
-                                    <option value="kiro">Kiro Account Manager (多文件)</option>
-                                    <option value="kiro-batch" selected>Kiro Account Manager (单文件)</option>
                                 </select>
                             </div>
                         `;
