@@ -268,7 +268,7 @@ def init_db():
             verification_type VARCHAR(20) NOT NULL,
             result VARCHAR(20) NOT NULL,
             details TEXT,
-            verified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            verified_at DATETIME NOT NULL,
             FOREIGN KEY (account_id) REFERENCES accounts(id),
             FOREIGN KEY (order_id) REFERENCES orders(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
