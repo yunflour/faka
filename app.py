@@ -1969,30 +1969,101 @@ def redeem_cdk_batch():
                     failed_count += 1
                 continue
 
-            # 获取绑定的账号或分配一个可用账号
+            # 获取绑定的账号或分配一个可用账号（带校验）
             account_id = cdk["account_id"]
+            bound_account = account_id is not None
+            account = None
+            final_verify_classification = None
+            final_verify_details = None
+
             if not account_id:
-                available_account = _execute(db,
-                    "SELECT * FROM accounts WHERE status = 'available' AND id NOT IN "
-                    "(SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL) LIMIT 1"
-                ).fetchone()
-                if not available_account:
-                    results.append({"cdk": cdk_code, "success": False, "error": "暂无可用账号"})
+                # 动态分配账号：尝试最多10个账号进行校验，找到可用的
+                tried_account_ids = []
+                max_attempts = 10
+                found_available = False
+
+                for attempt in range(max_attempts):
+                    exclude_clause = ""
+                    params = []
+                    if tried_account_ids:
+                        placeholders = ",".join(["%s"] * len(tried_account_ids))
+                        exclude_clause = f"AND id NOT IN ({placeholders})"
+                        params = tried_account_ids.copy()
+
+                    available_account = _execute(db,
+                        f"""SELECT * FROM accounts WHERE status = 'available' {exclude_clause}
+                            AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)
+                            LIMIT 1""",
+                        params
+                    ).fetchone()
+
+                    if not available_account:
+                        break
+
+                    trial_account_id = available_account["id"]
+                    tried_account_ids.append(trial_account_id)
+
+                    # 校验账号
+                    verify_result = check_account_status(trial_account_id, db)
+                    verify_classification = verify_result.get("classification", "unknown")
+                    verify_details = json.dumps({
+                        "error": verify_result.get("error"),
+                        "evidence": verify_result.get("evidence"),
+                    }, ensure_ascii=False)
+
+                    # 记录尝试校验结果
+                    _execute(db,
+                        """INSERT INTO verifications (account_id, verification_type, result, details, verified_at)
+                           VALUES (%s, 'redeem_trial', %s, %s, %s)""",
+                        (trial_account_id, verify_classification, verify_details, beijing_now().isoformat())
+                    )
+
+                    if verify_classification == "available":
+                        account_id = trial_account_id
+                        account = available_account
+                        final_verify_classification = verify_classification
+                        final_verify_details = verify_details
+                        found_available = True
+                        break
+                    elif verify_classification == "blocked":
+                        _execute(db, "UPDATE accounts SET status = 'blocked' WHERE id = %s", (trial_account_id,))
+
+                if not found_available or not account_id:
+                    results.append({"cdk": cdk_code, "success": False, "error": "暂无可用账号，请稍后重试"})
                     failed_count += 1
                     continue
-                account_id = available_account["id"]
-                account = available_account
+
             else:
+                # CDK绑定了账号，校验该账号
                 account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
                 if not account:
                     results.append({"cdk": cdk_code, "success": False, "error": "绑定的账号不存在"})
                     failed_count += 1
                     continue
 
-            if account["status"] == "blocked":
-                results.append({"cdk": cdk_code, "success": False, "error": "绑定的账号已被封禁"})
-                failed_count += 1
-                continue
+                verify_result = check_account_status(account_id, db)
+                final_verify_classification = verify_result.get("classification", "unknown")
+                final_verify_details = json.dumps({
+                    "error": verify_result.get("error"),
+                    "evidence": verify_result.get("evidence"),
+                }, ensure_ascii=False)
+
+                _execute(db,
+                    """INSERT INTO verifications (account_id, verification_type, result, details, verified_at)
+                       VALUES (%s, 'redeem_bound', %s, %s, %s)""",
+                    (account_id, final_verify_classification, final_verify_details, beijing_now().isoformat())
+                )
+
+                if final_verify_classification == "blocked":
+                    _execute(db, "UPDATE accounts SET status = 'blocked' WHERE id = %s", (account_id,))
+                    results.append({"cdk": cdk_code, "success": False, "error": "绑定的账号已被封禁，请联系客服更换"})
+                    failed_count += 1
+                    continue
+
+                if final_verify_classification == "unknown":
+                    results.append({"cdk": cdk_code, "success": False, "error": "账号状态不明确，请稍后重试"})
+                    failed_count += 1
+                    continue
 
             # 创建订单
             warranty_expires = beijing_now() + timedelta(days=warranty_days)
@@ -2011,6 +2082,13 @@ def redeem_cdk_batch():
 
             # 获取订单ID
             order = _execute(db, "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)).fetchone()
+
+            # 记录提卡校验结果
+            _execute(db,
+                """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
+                   VALUES (%s, %s, 'redeem', %s, %s, %s)""",
+                (account_id, order["id"], final_verify_classification, final_verify_details, beijing_now().isoformat())
+            )
 
             # 解析token数据
             token_data = {}
