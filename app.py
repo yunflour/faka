@@ -252,6 +252,21 @@ def init_db():
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
+    # 校验记录表
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS verifications (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            account_id INT NOT NULL,
+            order_id INT,
+            verification_type VARCHAR(20) NOT NULL,
+            result VARCHAR(20) NOT NULL,
+            details TEXT,
+            verified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES accounts(id),
+            FOREIGN KEY (order_id) REFERENCES orders(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
     # 系统设置表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
@@ -1278,23 +1293,90 @@ def redeem_cdk():
 
     # 获取绑定的账号或分配一个可用账号
     account_id = cdk["account_id"]
+    bound_account = account_id is not None
+
     if not account_id:
-        # 分配一个可用账号（排除所有已有订单的账号，防止重复分配）
-        available_account = _execute(db,
-            "SELECT * FROM accounts WHERE status = 'available' AND id NOT IN "
-            "(SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL) LIMIT 1"
-        ).fetchone()
-        if not available_account:
-            return jsonify({"success": False, "error": "暂无可用账号"}), 400
-        account_id = available_account["id"]
+        # 动态分配账号：尝试最多10个账号进行校验，找到可用的
+        tried_account_ids = []
+        max_attempts = 10
+        found_available = False
 
-    # 获取账号信息
-    account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
-    if not account:
-        return jsonify({"success": False, "error": "绑定的账号不存在"}), 400
+        for attempt in range(max_attempts):
+            exclude_clause = ""
+            params = []
+            if tried_account_ids:
+                placeholders = ",".join(["%s"] * len(tried_account_ids))
+                exclude_clause = f"AND id NOT IN ({placeholders})"
+                params = tried_account_ids.copy()
 
-    if account["status"] == "blocked":
-        return jsonify({"success": False, "error": "绑定的账号已被封禁"}), 400
+            available_account = _execute(db,
+                f"""SELECT * FROM accounts WHERE status = 'available' {exclude_clause}
+                    AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)
+                    LIMIT 1""",
+                params
+            ).fetchone()
+
+            if not available_account:
+                break
+
+            trial_account_id = available_account["id"]
+            tried_account_ids.append(trial_account_id)
+
+            # 校验账号
+            verify_result = check_account_status(trial_account_id, db)
+            verify_classification = verify_result.get("classification", "unknown")
+            verify_details = json.dumps({
+                "error": verify_result.get("error"),
+                "evidence": verify_result.get("evidence"),
+            }, ensure_ascii=False)
+
+            # 记录尝试校验结果
+            _execute(db,
+                """INSERT INTO verifications (account_id, verification_type, result, details)
+                   VALUES (%s, 'redeem_trial', %s, %s)""",
+                (trial_account_id, verify_classification, verify_details)
+            )
+
+            if verify_classification == "available":
+                account_id = trial_account_id
+                final_verify_classification = verify_classification
+                final_verify_details = verify_details
+                found_available = True
+                break
+            elif verify_classification == "blocked":
+                _execute(db, "UPDATE accounts SET status = 'blocked' WHERE id = %s", (trial_account_id,))
+
+        if not found_available or not account_id:
+            db.commit()
+            return jsonify({"success": False, "error": "暂无可用账号，请稍后重试"}), 400
+
+    else:
+        # CDK绑定了账号，校验该账号
+        account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
+        if not account:
+            return jsonify({"success": False, "error": "绑定的账号不存在"}), 400
+
+        verify_result = check_account_status(account_id, db)
+        final_verify_classification = verify_result.get("classification", "unknown")
+        final_verify_details = json.dumps({
+            "error": verify_result.get("error"),
+            "evidence": verify_result.get("evidence"),
+        }, ensure_ascii=False)
+
+        _execute(db,
+            """INSERT INTO verifications (account_id, verification_type, result, details)
+               VALUES (%s, 'redeem_bound', %s, %s)""",
+            (account_id, final_verify_classification, final_verify_details)
+        )
+
+        if final_verify_classification == "blocked":
+            _execute(db, "UPDATE accounts SET status = 'blocked' WHERE id = %s", (account_id,))
+            db.commit()
+            return jsonify({"success": False, "error": "绑定的账号已被封禁，请联系客服更换"}), 400
+
+        if final_verify_classification == "unknown":
+            db.commit()
+            return jsonify({"success": False, "error": "账号状态不明确，请稍后重试"}), 400
 
     # 获取质保天数
     warranty_days = int(get_setting("warranty_days", "7"))
@@ -1314,10 +1396,17 @@ def redeem_cdk():
         (datetime.now().isoformat(), request.remote_addr, account_id, cdk_code),
     )
 
-    db.commit()
-
     # 获取订单ID
     order = _execute(db, "SELECT * FROM orders WHERE cdk_code = %s", (cdk_code,)).fetchone()
+
+    # 记录提卡校验结果
+    _execute(db,
+        """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
+           VALUES (%s, %s, 'redeem', %s, %s)""",
+        (account_id, order["id"], verify_classification, verify_details)
+    )
+
+    db.commit()
 
     # 解析token数据
     token_data = {}
@@ -1689,10 +1778,25 @@ def request_replacement():
         return jsonify({"success": False, "error": "已超出最大替换次数"}), 400
 
     # 检查账号是否真的被封禁
-    account_check = check_account_status(order["account_id"])
-    if account_check.get("classification") == "available":
+    account_check = check_account_status(order["account_id"], db)
+    old_verify_classification = account_check.get("classification", "unknown")
+    old_verify_details = json.dumps({
+        "error": account_check.get("error"),
+        "evidence": account_check.get("evidence"),
+    }, ensure_ascii=False)
+
+    # 记录旧账号校验结果
+    _execute(db,
+        """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
+           VALUES (%s, %s, 'replace_old', %s, %s)""",
+        (order["account_id"], order["id"], old_verify_classification, old_verify_details)
+    )
+
+    if old_verify_classification == "available":
+        db.commit()
         return jsonify({"success": False, "error": "账号状态正常，无需替换"}), 400
-    if account_check.get("classification") != "blocked":
+    if old_verify_classification != "blocked":
+        db.commit()
         return jsonify({"success": False, "error": "当前无法明确判断账号已封禁，请稍后重试"}), 400
 
     old_account_id = order["account_id"]
@@ -1706,9 +1810,18 @@ def request_replacement():
     ).fetchone()
 
     if not new_account:
+        db.commit()
         return jsonify({"success": False, "error": "暂无可用账号进行替换"}), 400
 
     new_account_id = new_account["id"]
+
+    # 校验新账号
+    new_account_check = check_account_status(new_account_id, db)
+    new_verify_classification = new_account_check.get("classification", "unknown")
+    new_verify_details = json.dumps({
+        "error": new_account_check.get("error"),
+        "evidence": new_account_check.get("evidence"),
+    }, ensure_ascii=False)
 
     # 更新订单
     _execute(db,
@@ -1721,7 +1834,15 @@ def request_replacement():
     _execute(db,
         """INSERT INTO replacements (order_id, old_account_id, new_account_id, reason)
            VALUES (%s, %s, %s, %s)""",
-        (order["id"], old_account_id, new_account_id, "账号被封禁")
+        (order["id"], old_account_id, new_account_id,
+         f"旧账号校验: {old_verify_classification}, 新账号校验: {new_verify_classification}")
+    )
+
+    # 记录新账号校验结果
+    _execute(db,
+        """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
+           VALUES (%s, %s, 'replace_new', %s, %s)""",
+        (new_account_id, order["id"], new_verify_classification, new_verify_details)
     )
 
     # 标记旧账号
@@ -2058,15 +2179,23 @@ def request_replacement_batch():
                 failed_count += 1
                 continue
 
-            # 检查账号是否被封禁
-            account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (order["account_id"],)).fetchone()
-            if not account:
-                results.append({"cdk": cdk_code, "success": False, "error": "账号不存在"})
-                failed_count += 1
-                continue
+            # 检查账号是否被封禁（进行校验）
+            old_account_check = check_account_status(order["account_id"], db)
+            old_verify_classification = old_account_check.get("classification", "unknown")
+            old_verify_details = json.dumps({
+                "error": old_account_check.get("error"),
+                "evidence": old_account_check.get("evidence"),
+            }, ensure_ascii=False)
 
-            if account["status"] != "blocked":
-                results.append({"cdk": cdk_code, "success": False, "error": f"账号状态为{account['status']}，无需替换"})
+            # 记录旧账号校验结果
+            _execute(db,
+                """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
+                   VALUES (%s, %s, 'replace_old', %s, %s)""",
+                (order["account_id"], order["id"], old_verify_classification, old_verify_details)
+            )
+
+            if old_verify_classification != "blocked":
+                results.append({"cdk": cdk_code, "success": False, "error": f"账号校验结果为{old_verify_classification}，不可替换"})
                 failed_count += 1
                 continue
 
@@ -2087,6 +2216,14 @@ def request_replacement_batch():
 
             new_account_id = new_account["id"]
 
+            # 校验新账号
+            new_account_check = check_account_status(new_account_id, db)
+            new_verify_classification = new_account_check.get("classification", "unknown")
+            new_verify_details = json.dumps({
+                "error": new_account_check.get("error"),
+                "evidence": new_account_check.get("evidence"),
+            }, ensure_ascii=False)
+
             # 更新订单
             _execute(db,
                 """UPDATE orders SET account_id = %s, replacement_count = replacement_count + 1
@@ -2098,7 +2235,15 @@ def request_replacement_batch():
             _execute(db,
                 """INSERT INTO replacements (order_id, old_account_id, new_account_id, reason)
                    VALUES (%s, %s, %s, %s)""",
-                (order["id"], old_account_id, new_account_id, "账号被封禁")
+                (order["id"], old_account_id, new_account_id,
+                 f"旧账号校验: {old_verify_classification}, 新账号校验: {new_verify_classification}")
+            )
+
+            # 记录新账号校验结果
+            _execute(db,
+                """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
+                   VALUES (%s, %s, 'replace_new', %s, %s)""",
+                (new_account_id, order["id"], new_verify_classification, new_verify_details)
             )
 
             # 标记旧账号
