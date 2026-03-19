@@ -33,6 +33,17 @@ def beijing_now():
     """获取北京时间"""
     return datetime.now(BEIJING_TZ)
 
+def to_beijing_time(dt_str):
+    """将时间字符串转换为带北京时区的datetime对象"""
+    if not dt_str:
+        return None
+    dt = datetime.fromisoformat(str(dt_str))
+    # 如果已经是带时区的，直接返回
+    if dt.tzinfo is not None:
+        return dt
+    # 如果不带时区，假定为北京时间
+    return dt.replace(tzinfo=BEIJING_TZ)
+
 def _env_str(name: str, default: str) -> str:
     value = os.getenv(name)
     return value if value not in (None, "") else default
@@ -1720,7 +1731,7 @@ def check_warranty():
     account_check = check_account_status(order["account_id"]) if account else None
 
     # 检查是否在质保期内
-    warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
+    warranty_expires = to_beijing_time(order["warranty_expires_at"])
     in_warranty = beijing_now() < warranty_expires
 
     # 检查是否可以替换
@@ -1778,7 +1789,7 @@ def request_replacement():
         return jsonify({"success": False, "error": "订单不存在"}), 404
 
     # 检查质保期
-    warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
+    warranty_expires = to_beijing_time(order["warranty_expires_at"])
     if beijing_now() >= warranty_expires:
         return jsonify({"success": False, "error": "质保已过期"}), 400
 
@@ -2084,7 +2095,7 @@ def check_warranty_batch():
             account_check = check_account_status(order["account_id"]) if account else None
 
             # 检查是否在质保期内
-            warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
+            warranty_expires = to_beijing_time(order["warranty_expires_at"])
             in_warranty = beijing_now() < warranty_expires
 
             # 判断是否可以替换：质保内 + 未超替换次数 + 账号被封禁
@@ -2177,7 +2188,7 @@ def request_replacement_batch():
                 continue
 
             # 检查质保期
-            warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
+            warranty_expires = to_beijing_time(order["warranty_expires_at"])
             if beijing_now() >= warranty_expires:
                 results.append({"cdk": cdk_code, "success": False, "error": "质保已过期"})
                 failed_count += 1
@@ -2993,7 +3004,7 @@ def admin_orders():
         warranty_expires = order_dict.get("warranty_expires_at")
         if warranty_expires:
             try:
-                expires_dt = datetime.fromisoformat(str(warranty_expires))
+                expires_dt = to_beijing_time(warranty_expires)
                 if now >= expires_dt:
                     order_dict["effective_status"] = "expired"
                 else:
