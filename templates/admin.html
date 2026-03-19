@@ -638,6 +638,7 @@
                     </select>
                     <button class="btn btn-primary btn-sm" onclick="loadAccounts()">搜索</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteSelectedAccounts()">删除选中</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteBlockedNoOrderAccounts()">删除无订单封禁账号</button>
                 </div>
                 <table>
                     <thead>
@@ -671,6 +672,7 @@
                         <option value="expired">过期</option>
                     </select>
                     <button class="btn btn-danger btn-sm" onclick="deleteSelectedOrders()">删除选中</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteExpiredBlockedOrders()">删除过期且封禁</button>
                 </div>
                 <table>
                     <thead>
@@ -1710,6 +1712,60 @@
                     selectedOrders = [];
                     loadOrders();
                     loadCdks();
+                    loadAccounts();
+                    loadStats();
+                } else {
+                    alert('删除失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        // 删除过期且封禁的订单
+        async function deleteExpiredBlockedOrders() {
+            if (!confirm('确定删除所有过期且账号封禁的订单吗？\n\n删除后：\n- 订单及相关CDK将被删除\n- 此操作不可恢复')) {
+                return;
+            }
+
+            showLoading();
+            try {
+                const response = await fetch('/api/admin/orders/expired-blocked', {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(`删除完成: 共删除 ${data.deleted_count} 个订单`);
+                    loadOrders();
+                    loadCdks();
+                    loadAccounts();
+                    loadStats();
+                } else {
+                    alert('删除失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+            hideLoading();
+        }
+
+        // 删除无订单且封禁的账号
+        async function deleteBlockedNoOrderAccounts() {
+            if (!confirm('确定删除所有无订单且封禁的账号吗？\n\n此操作不可恢复')) {
+                return;
+            }
+
+            showLoading();
+            try {
+                const response = await fetch('/api/admin/accounts/blocked-no-order', {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(`删除完成: 共删除 ${data.deleted_count} 个账号`);
                     loadAccounts();
                     loadStats();
                 } else {

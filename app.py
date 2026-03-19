@@ -2948,6 +2948,62 @@ def delete_orders_batch():
     })
 
 
+@app.route("/api/admin/orders/expired-blocked", methods=["DELETE"])
+@admin_required
+def delete_expired_blocked_orders():
+    """删除过期且账号封禁的订单"""
+    db = get_db()
+    now = datetime.now()
+
+    # 查找过期且账号封禁的订单
+    orders = _execute(db, """
+        SELECT o.id, o.cdk_code FROM orders o
+        JOIN accounts a ON o.account_id = a.id
+        WHERE o.warranty_expires_at < %s AND a.status = 'blocked'
+    """, (now,)).fetchall()
+
+    deleted_count = 0
+    for order in orders:
+        try:
+            # 删除替换记录
+            _execute(db, "DELETE FROM replacements WHERE order_id = %s", (order["id"],))
+            # 删除订单
+            _execute(db, "DELETE FROM orders WHERE id = %s", (order["id"],))
+            # 删除CDK
+            _execute(db, "DELETE FROM cdks WHERE code = %s", (order["cdk_code"],))
+            deleted_count += 1
+        except Exception as e:
+            app.logger.error(f"删除订单 {order['id']} 失败: {e}")
+
+    db.commit()
+    return jsonify({"success": True, "deleted_count": deleted_count})
+
+
+@app.route("/api/admin/accounts/blocked-no-order", methods=["DELETE"])
+@admin_required
+def delete_blocked_no_order_accounts():
+    """删除无订单且封禁的账号"""
+    db = get_db()
+
+    # 查找封禁且没有关联订单的账号
+    accounts = _execute(db, """
+        SELECT a.id FROM accounts a
+        LEFT JOIN orders o ON a.id = o.account_id
+        WHERE a.status = 'blocked' AND o.id IS NULL
+    """).fetchall()
+
+    deleted_count = 0
+    for account in accounts:
+        try:
+            _execute(db, "DELETE FROM accounts WHERE id = %s", (account["id"],))
+            deleted_count += 1
+        except Exception as e:
+            app.logger.error(f"删除账号 {account['id']} 失败: {e}")
+
+    db.commit()
+    return jsonify({"success": True, "deleted_count": deleted_count})
+
+
 @app.route("/api/admin/settings", methods=["GET", "POST"])
 @admin_required
 def admin_settings():
