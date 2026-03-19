@@ -730,7 +730,7 @@
                             <th>结果</th>
                             <th>账号ID</th>
                             <th>订单ID</th>
-                            <th>详情</th>
+                            <th>CDK</th>
                         </tr>
                     </thead>
                     <tbody id="verifications-table-body">
@@ -1863,22 +1863,13 @@
                         <td><span class="status-badge ${resultClasses[v.result] || ''}">${resultLabels[v.result] || v.result}</span></td>
                         <td>${v.account_id}</td>
                         <td>${v.order_id || '-'}</td>
-                        <td><button class="btn btn-sm btn-secondary" onclick="showVerificationDetails(${v.id}, '${v.details.replace(/'/g, "\\'")}')">查看</button></td>
+                        <td><code>${v.cdk_code || '-'}</code></td>
                     </tr>
                 `).join('');
 
                 renderPagination('verifications', data.total, data.page, data.per_page);
             } catch (error) {
                 console.error('加载提卡日志失败:', error);
-            }
-        }
-
-        function showVerificationDetails(id, details) {
-            try {
-                const data = JSON.parse(details);
-                alert(`校验详情 (ID: ${id})\n\n${JSON.stringify(data, null, 2)}`);
-            } catch {
-                alert(`校验详情 (ID: ${id})\n\n${details}`);
             }
         }
 

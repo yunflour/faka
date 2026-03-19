@@ -3115,25 +3115,27 @@ def get_verifications():
 
     offset = (page - 1) * per_page
 
-    query = "SELECT * FROM verifications"
+    query = """SELECT v.*, o.cdk_code
+               FROM verifications v
+               LEFT JOIN orders o ON v.order_id = o.id"""
     params = []
     where_conditions = []
 
     if v_type:
-        where_conditions.append("verification_type = %s")
+        where_conditions.append("v.verification_type = %s")
         params.append(v_type)
     if v_result:
-        where_conditions.append("result = %s")
+        where_conditions.append("v.result = %s")
         params.append(v_result)
 
     if where_conditions:
         query += " WHERE " + " AND ".join(where_conditions)
-    query += " ORDER BY verified_at DESC LIMIT %s OFFSET %s"
+    query += " ORDER BY v.verified_at DESC LIMIT %s OFFSET %s"
     params.extend([per_page, offset])
 
     verifications = _execute(db, query, params).fetchall()
 
-    count_query = "SELECT COUNT(*) as cnt FROM verifications"
+    count_query = "SELECT COUNT(*) as cnt FROM verifications v"
     count_params = []
     if where_conditions:
         count_query += " WHERE " + " AND ".join(where_conditions)
