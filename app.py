@@ -13,7 +13,7 @@ import re
 import secrets
 import string
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -25,6 +25,13 @@ from dbutils.pooled_db import PooledDB
 
 import requests
 from flask import Flask, g, jsonify, redirect, render_template, request, Response, send_file, session, stream_with_context, url_for
+
+# 北京时区
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+def beijing_now():
+    """获取北京时间"""
+    return datetime.now(BEIJING_TZ)
 
 def _env_str(name: str, default: str) -> str:
     value = os.getenv(name)
@@ -1332,9 +1339,9 @@ def redeem_cdk():
 
             # 记录尝试校验结果
             _execute(db,
-                """INSERT INTO verifications (account_id, verification_type, result, details)
-                   VALUES (%s, 'redeem_trial', %s, %s)""",
-                (trial_account_id, verify_classification, verify_details)
+                """INSERT INTO verifications (account_id, verification_type, result, details, verified_at)
+                   VALUES (%s, 'redeem_trial', %s, %s, %s)""",
+                (trial_account_id, verify_classification, verify_details, beijing_now().isoformat())
             )
 
             if verify_classification == "available":
@@ -1350,6 +1357,9 @@ def redeem_cdk():
             db.commit()
             return jsonify({"success": False, "error": "暂无可用账号，请稍后重试"}), 400
 
+        # 获取最终分配的账号信息
+        account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
+
     else:
         # CDK绑定了账号，校验该账号
         account = _execute(db, "SELECT * FROM accounts WHERE id = %s", (account_id,)).fetchone()
@@ -1364,9 +1374,9 @@ def redeem_cdk():
         }, ensure_ascii=False)
 
         _execute(db,
-            """INSERT INTO verifications (account_id, verification_type, result, details)
-               VALUES (%s, 'redeem_bound', %s, %s)""",
-            (account_id, final_verify_classification, final_verify_details)
+            """INSERT INTO verifications (account_id, verification_type, result, details, verified_at)
+               VALUES (%s, 'redeem_bound', %s, %s, %s)""",
+            (account_id, final_verify_classification, final_verify_details, beijing_now().isoformat())
         )
 
         if final_verify_classification == "blocked":
@@ -1401,9 +1411,9 @@ def redeem_cdk():
 
     # 记录提卡校验结果
     _execute(db,
-        """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
-           VALUES (%s, %s, 'redeem', %s, %s)""",
-        (account_id, order["id"], verify_classification, verify_details)
+        """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
+           VALUES (%s, %s, 'redeem', %s, %s, %s)""",
+        (account_id, order["id"], final_verify_classification, final_verify_details, beijing_now().isoformat())
     )
 
     db.commit()
@@ -1787,9 +1797,9 @@ def request_replacement():
 
     # 记录旧账号校验结果
     _execute(db,
-        """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
-           VALUES (%s, %s, 'replace_old', %s, %s)""",
-        (order["account_id"], order["id"], old_verify_classification, old_verify_details)
+        """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
+           VALUES (%s, %s, 'replace_old', %s, %s, %s)""",
+        (order["account_id"], order["id"], old_verify_classification, old_verify_details, beijing_now().isoformat())
     )
 
     if old_verify_classification == "available":
@@ -1840,9 +1850,9 @@ def request_replacement():
 
     # 记录新账号校验结果
     _execute(db,
-        """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
-           VALUES (%s, %s, 'replace_new', %s, %s)""",
-        (new_account_id, order["id"], new_verify_classification, new_verify_details)
+        """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
+           VALUES (%s, %s, 'replace_new', %s, %s, %s)""",
+        (new_account_id, order["id"], new_verify_classification, new_verify_details, beijing_now().isoformat())
     )
 
     # 标记旧账号
@@ -2189,9 +2199,9 @@ def request_replacement_batch():
 
             # 记录旧账号校验结果
             _execute(db,
-                """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
-                   VALUES (%s, %s, 'replace_old', %s, %s)""",
-                (order["account_id"], order["id"], old_verify_classification, old_verify_details)
+                """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
+                   VALUES (%s, %s, 'replace_old', %s, %s, %s)""",
+                (order["account_id"], order["id"], old_verify_classification, old_verify_details, beijing_now().isoformat())
             )
 
             if old_verify_classification != "blocked":
@@ -2241,9 +2251,9 @@ def request_replacement_batch():
 
             # 记录新账号校验结果
             _execute(db,
-                """INSERT INTO verifications (account_id, order_id, verification_type, result, details)
-                   VALUES (%s, %s, 'replace_new', %s, %s)""",
-                (new_account_id, order["id"], new_verify_classification, new_verify_details)
+                """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
+                   VALUES (%s, %s, 'replace_new', %s, %s, %s)""",
+                (new_account_id, order["id"], new_verify_classification, new_verify_details, beijing_now().isoformat())
             )
 
             # 标记旧账号
