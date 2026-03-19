@@ -523,6 +523,7 @@
             <li><a href="#" onclick="showSection('cdks')">CDK管理</a></li>
             <li><a href="#" onclick="showSection('accounts')">账号仓库</a></li>
             <li><a href="#" onclick="showSection('orders')">订单管理</a></li>
+            <li><a href="#" onclick="showSection('verifications')">提卡日志</a></li>
             <li><a href="#" onclick="showSection('settings')">系统设置</a></li>
         </ul>
         <div class="logout-link">
@@ -697,6 +698,48 @@
             </div>
         </div>
 
+        <!-- 提卡日志 -->
+        <div id="section-verifications" class="tab-section">
+            <div class="page-header">
+                <h2>提卡日志</h2>
+            </div>
+            <div class="card">
+                <div class="filter-bar">
+                    <select id="verification-type-filter" onchange="loadVerifications()">
+                        <option value="">全部类型</option>
+                        <option value="redeem">提卡</option>
+                        <option value="redeem_trial">提卡尝试</option>
+                        <option value="redeem_bound">绑定账号提卡</option>
+                        <option value="replace_old">替换旧账号</option>
+                        <option value="replace_new">替换新账号</option>
+                    </select>
+                    <select id="verification-result-filter" onchange="loadVerifications()">
+                        <option value="">全部结果</option>
+                        <option value="available">正常</option>
+                        <option value="blocked">封禁</option>
+                        <option value="unknown">未知</option>
+                    </select>
+                    <button class="btn btn-secondary btn-sm" onclick="loadVerifications()">刷新</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>时间</th>
+                            <th>类型</th>
+                            <th>结果</th>
+                            <th>账号ID</th>
+                            <th>订单ID</th>
+                            <th>详情</th>
+                        </tr>
+                    </thead>
+                    <tbody id="verifications-table-body">
+                    </tbody>
+                </table>
+                <div class="pagination" id="verifications-pagination"></div>
+            </div>
+        </div>
+
         <!-- 系统设置 -->
         <div id="section-settings" class="tab-section">
             <div class="page-header">
@@ -818,6 +861,7 @@
         let currentCDKPage = 1;
         let currentAccountPage = 1;
         let currentOrderPage = 1;
+        let currentVerificationPage = 1;
         let selectedCDKs = [];
         let selectedAccounts = [];
         let selectedOrders = [];
@@ -829,6 +873,7 @@
             loadCdks();
             loadAccounts();
             loadOrders();
+            loadVerifications();
             loadSettings();
 
             // 表单提交事件
@@ -1775,6 +1820,66 @@
                 alert('删除失败: ' + error.message);
             }
             hideLoading();
+        }
+
+        // 加载提卡日志
+        async function loadVerifications(page = 1) {
+            currentVerificationPage = page;
+            const type = document.getElementById('verification-type-filter').value;
+            const result = document.getElementById('verification-result-filter').value;
+
+            const params = new URLSearchParams({page, per_page: 20});
+            if (type) params.append('type', type);
+            if (result) params.append('result', result);
+
+            try {
+                const response = await fetch(`/api/admin/verifications?${params.toString()}`);
+                const data = await response.json();
+
+                const typeLabels = {
+                    'redeem': '提卡',
+                    'redeem_trial': '提卡尝试',
+                    'redeem_bound': '绑定账号提卡',
+                    'replace_old': '替换旧账号',
+                    'replace_new': '替换新账号'
+                };
+                const resultLabels = {
+                    'available': '正常',
+                    'blocked': '封禁',
+                    'unknown': '未知'
+                };
+                const resultClasses = {
+                    'available': 'available',
+                    'blocked': 'blocked',
+                    'unknown': 'unknown'
+                };
+
+                const tbody = document.getElementById('verifications-table-body');
+                tbody.innerHTML = data.verifications.map(v => `
+                    <tr>
+                        <td>${v.id}</td>
+                        <td>${new Date(v.verified_at).toLocaleString()}</td>
+                        <td>${typeLabels[v.verification_type] || v.verification_type}</td>
+                        <td><span class="status-badge ${resultClasses[v.result] || ''}">${resultLabels[v.result] || v.result}</span></td>
+                        <td>${v.account_id}</td>
+                        <td>${v.order_id || '-'}</td>
+                        <td><button class="btn btn-sm btn-secondary" onclick="showVerificationDetails(${v.id}, '${v.details.replace(/'/g, "\\'")}')">查看</button></td>
+                    </tr>
+                `).join('');
+
+                renderPagination('verifications', data.total, data.page, data.per_page);
+            } catch (error) {
+                console.error('加载提卡日志失败:', error);
+            }
+        }
+
+        function showVerificationDetails(id, details) {
+            try {
+                const data = JSON.parse(details);
+                alert(`校验详情 (ID: ${id})\n\n${JSON.stringify(data, null, 2)}`);
+            } catch {
+                alert(`校验详情 (ID: ${id})\n\n${details}`);
+            }
         }
 
         // 加载设置

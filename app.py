@@ -797,7 +797,7 @@ def check_account_status(account_id: int, db=None) -> dict[str, Any]:
     if refresh_result.get("error") == "missing_client_credentials":
         _execute(db,
             "UPDATE accounts SET last_verified_at = %s WHERE id = %s",
-            (datetime.now().isoformat(), account_id),
+            (beijing_now().isoformat(), account_id),
         )
         db.commit()
         return {
@@ -851,7 +851,7 @@ def check_account_status(account_id: int, db=None) -> dict[str, Any]:
             refreshed_refresh_token or account["refresh_token"],
             refreshed_id_token or account["id_token"],
             new_status,
-            datetime.now().isoformat(),
+            beijing_now().isoformat(),
             account_id,
         )
         _execute(db,
@@ -873,7 +873,7 @@ def check_account_status(account_id: int, db=None) -> dict[str, Any]:
             refreshed_access_token or account["access_token"],
             refreshed_refresh_token or account["refresh_token"],
             refreshed_id_token or account["id_token"],
-            datetime.now().isoformat(),
+            beijing_now().isoformat(),
             account_id,
         )
         _execute(db,
@@ -1004,7 +1004,7 @@ def query_account_quota(account_id: int, db=None) -> dict[str, Any]:
                 refreshed_refresh_token or account["refresh_token"],
                 refreshed_id_token or account["id_token"],
                 token_data_json,
-                datetime.now().isoformat(),
+                beijing_now().isoformat(),
                 account_id,
             ),
         )
@@ -1174,7 +1174,7 @@ def warmup_account(account_id: int, db=None) -> dict[str, Any]:
             refreshed_refresh_token or account["refresh_token"],
             refreshed_id_token or account["id_token"],
             token_data_json,
-            datetime.now().isoformat(),
+            beijing_now().isoformat(),
             account_id,
         ),
     )
@@ -1390,7 +1390,7 @@ def redeem_cdk():
 
     # 获取质保天数
     warranty_days = int(get_setting("warranty_days", "7"))
-    warranty_expires = datetime.now() + timedelta(days=warranty_days)
+    warranty_expires = beijing_now() + timedelta(days=warranty_days)
 
     # 创建订单
     _execute(db,
@@ -1403,7 +1403,7 @@ def redeem_cdk():
     # 更新CDK状态
     _execute(db,
         "UPDATE cdks SET status = 'used', used_at = %s, used_by = %s, account_id = %s WHERE code = %s",
-        (datetime.now().isoformat(), request.remote_addr, account_id, cdk_code),
+        (beijing_now().isoformat(), request.remote_addr, account_id, cdk_code),
     )
 
     # 获取订单ID
@@ -1721,7 +1721,7 @@ def check_warranty():
 
     # 检查是否在质保期内
     warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
-    in_warranty = datetime.now() < warranty_expires
+    in_warranty = beijing_now() < warranty_expires
 
     # 检查是否可以替换
     max_replacements = int(get_setting("max_replacements", "3"))
@@ -1779,7 +1779,7 @@ def request_replacement():
 
     # 检查质保期
     warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
-    if datetime.now() >= warranty_expires:
+    if beijing_now() >= warranty_expires:
         return jsonify({"success": False, "error": "质保已过期"}), 400
 
     # 检查替换次数
@@ -1984,7 +1984,7 @@ def redeem_cdk_batch():
                 continue
 
             # 创建订单
-            warranty_expires = datetime.now() + timedelta(days=warranty_days)
+            warranty_expires = beijing_now() + timedelta(days=warranty_days)
             _execute(db,
                 """INSERT INTO orders
                    (cdk_code, account_id, user_ip, warranty_days, warranty_expires_at, status)
@@ -1995,7 +1995,7 @@ def redeem_cdk_batch():
             # 更新CDK状态
             _execute(db,
                 "UPDATE cdks SET status = 'used', used_at = %s, used_by = %s, account_id = %s WHERE code = %s",
-                (datetime.now().isoformat(), request.remote_addr, account_id, cdk_code),
+                (beijing_now().isoformat(), request.remote_addr, account_id, cdk_code),
             )
 
             # 获取订单ID
@@ -2085,7 +2085,7 @@ def check_warranty_batch():
 
             # 检查是否在质保期内
             warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
-            in_warranty = datetime.now() < warranty_expires
+            in_warranty = beijing_now() < warranty_expires
 
             # 判断是否可以替换：质保内 + 未超替换次数 + 账号被封禁
             can_replace = (
@@ -2178,7 +2178,7 @@ def request_replacement_batch():
 
             # 检查质保期
             warranty_expires = datetime.fromisoformat(str(order["warranty_expires_at"]))
-            if datetime.now() >= warranty_expires:
+            if beijing_now() >= warranty_expires:
                 results.append({"cdk": cdk_code, "success": False, "error": "质保已过期"})
                 failed_count += 1
                 continue
@@ -2985,7 +2985,7 @@ def admin_orders():
         total = _execute(db, count_query).fetchone()["cnt"]
 
     # 动态判断订单状态（根据质保到期时间）
-    now = datetime.now()
+    now = beijing_now()
     orders_list = []
     for order in orders:
         order_dict = dict(order)
@@ -3103,12 +3103,59 @@ def delete_orders_batch():
     })
 
 
+@app.route("/api/admin/verifications")
+@admin_required
+def get_verifications():
+    """获取提卡日志"""
+    db = get_db()
+    page = int(request.args.get("page", 1))
+    per_page = int(request.args.get("per_page", 20))
+    v_type = request.args.get("type", "")
+    v_result = request.args.get("result", "")
+
+    offset = (page - 1) * per_page
+
+    query = "SELECT * FROM verifications"
+    params = []
+    where_conditions = []
+
+    if v_type:
+        where_conditions.append("verification_type = %s")
+        params.append(v_type)
+    if v_result:
+        where_conditions.append("result = %s")
+        params.append(v_result)
+
+    if where_conditions:
+        query += " WHERE " + " AND ".join(where_conditions)
+    query += " ORDER BY verified_at DESC LIMIT %s OFFSET %s"
+    params.extend([per_page, offset])
+
+    verifications = _execute(db, query, params).fetchall()
+
+    count_query = "SELECT COUNT(*) as cnt FROM verifications"
+    count_params = []
+    if where_conditions:
+        count_query += " WHERE " + " AND ".join(where_conditions)
+        count_params = params[:-2]
+        total = _execute(db, count_query, count_params).fetchone()["cnt"]
+    else:
+        total = _execute(db, count_query).fetchone()["cnt"]
+
+    return jsonify({
+        "verifications": [dict(v) for v in verifications],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+    })
+
+
 @app.route("/api/admin/orders/expired-blocked", methods=["DELETE"])
 @admin_required
 def delete_expired_blocked_orders():
     """删除过期且账号封禁的订单"""
     db = get_db()
-    now = datetime.now()
+    now = beijing_now()
 
     # 查找过期且账号封禁的订单
     orders = _execute(db, """
