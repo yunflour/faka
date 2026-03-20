@@ -26,23 +26,52 @@ from dbutils.pooled_db import PooledDB
 import requests
 from flask import Flask, g, jsonify, redirect, render_template, request, Response, send_file, session, stream_with_context, url_for
 
-# 北京时区
+# 后端统一使用 UTC，前端展示时再转北京时间
+UTC_TZ = timezone.utc
 BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def utc_now():
+    """获取 UTC 当前时间"""
+    return datetime.now(UTC_TZ)
+
 
 def beijing_now():
     """获取北京时间"""
-    return datetime.now(BEIJING_TZ)
+    return utc_now().astimezone(BEIJING_TZ)
 
-def to_beijing_time(dt_str):
-    """将时间字符串转换为带北京时区的datetime对象"""
-    if not dt_str:
+
+def to_utc_time(dt_value):
+    """将数据库/字符串时间统一转换为带 UTC 时区的 datetime"""
+    if not dt_value:
         return None
-    dt = datetime.fromisoformat(str(dt_str))
-    # 如果已经是带时区的，直接返回
-    if dt.tzinfo is not None:
-        return dt
-    # 如果不带时区，假定为北京时间
-    return dt.replace(tzinfo=BEIJING_TZ)
+
+    if isinstance(dt_value, datetime):
+        dt = dt_value
+    else:
+        dt = datetime.fromisoformat(str(dt_value).replace("Z", "+00:00"))
+
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC_TZ)
+    return dt.astimezone(UTC_TZ)
+
+
+def to_beijing_time(dt_value):
+    """将时间转换为带北京时区的 datetime 对象，仅用于展示"""
+    utc_dt = to_utc_time(dt_value)
+    return utc_dt.astimezone(BEIJING_TZ) if utc_dt else None
+
+
+def to_db_datetime(dt_value):
+    """格式化为 MySQL DATETIME/TIMESTAMP 可接受的 UTC 时间字符串"""
+    utc_dt = to_utc_time(dt_value)
+    return utc_dt.strftime("%Y-%m-%d %H:%M:%S") if utc_dt else None
+
+
+def to_api_datetime(dt_value):
+    """返回给前端的时间统一使用带时区的 UTC ISO 字符串"""
+    utc_dt = to_utc_time(dt_value)
+    return utc_dt.isoformat() if utc_dt else None
 
 def _env_str(name: str, default: str) -> str:
     value = os.getenv(name)
@@ -189,6 +218,8 @@ def get_db():
     db = getattr(g, "_database", None)
     if db is None:
         db = g._database = _get_pool().connection()
+        with db.cursor() as cursor:
+            cursor.execute("SET time_zone = '+00:00'")
     return db
 
 
@@ -1401,20 +1432,20 @@ def redeem_cdk():
 
     # 获取质保天数
     warranty_days = int(get_setting("warranty_days", "7"))
-    warranty_expires = beijing_now() + timedelta(days=warranty_days)
+    warranty_expires = utc_now() + timedelta(days=warranty_days)
 
     # 创建订单
     _execute(db,
         """INSERT INTO orders
            (cdk_code, account_id, user_ip, warranty_days, warranty_expires_at, status)
            VALUES (%s, %s, %s, %s, %s, 'active')""",
-        (cdk_code, account_id, request.remote_addr, warranty_days, warranty_expires.isoformat()),
+        (cdk_code, account_id, request.remote_addr, warranty_days, to_db_datetime(warranty_expires)),
     )
 
     # 更新CDK状态
     _execute(db,
         "UPDATE cdks SET status = 'used', used_at = %s, used_by = %s, account_id = %s WHERE code = %s",
-        (beijing_now().isoformat(), request.remote_addr, account_id, cdk_code),
+        (to_db_datetime(utc_now()), request.remote_addr, account_id, cdk_code),
     )
 
     # 获取订单ID
@@ -1424,7 +1455,7 @@ def redeem_cdk():
     _execute(db,
         """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
            VALUES (%s, %s, 'redeem', %s, %s, %s)""",
-        (account_id, order["id"], final_verify_classification, final_verify_details, beijing_now().isoformat())
+        (account_id, order["id"], final_verify_classification, final_verify_details, to_db_datetime(utc_now()))
     )
 
     db.commit()
@@ -1481,9 +1512,9 @@ def get_order(order_id):
             "cdk_code": order["cdk_code"],
             "status": order["status"],
             "warranty_days": order["warranty_days"],
-            "warranty_expires_at": order["warranty_expires_at"],
+            "warranty_expires_at": to_api_datetime(order["warranty_expires_at"]),
             "replacement_count": order["replacement_count"],
-            "created_at": order["created_at"],
+            "created_at": to_api_datetime(order["created_at"]),
         },
         "account": {
             "email": account["email"] if account else None,
@@ -1731,8 +1762,8 @@ def check_warranty():
     account_check = check_account_status(order["account_id"]) if account else None
 
     # 检查是否在质保期内
-    warranty_expires = to_beijing_time(order["warranty_expires_at"])
-    in_warranty = beijing_now() < warranty_expires
+    warranty_expires = to_utc_time(order["warranty_expires_at"])
+    in_warranty = utc_now() < warranty_expires
 
     # 检查是否可以替换
     max_replacements = int(get_setting("max_replacements", "3"))
@@ -1749,7 +1780,7 @@ def check_warranty():
             "id": order["id"],
             "cdk_code": order["cdk_code"],
             "status": order["status"],
-            "warranty_expires_at": order["warranty_expires_at"],
+            "warranty_expires_at": to_api_datetime(order["warranty_expires_at"]),
             "replacement_count": order["replacement_count"],
             "max_replacements": max_replacements,
         },
@@ -1789,8 +1820,8 @@ def request_replacement():
         return jsonify({"success": False, "error": "订单不存在"}), 404
 
     # 检查质保期
-    warranty_expires = to_beijing_time(order["warranty_expires_at"])
-    if beijing_now() >= warranty_expires:
+    warranty_expires = to_utc_time(order["warranty_expires_at"])
+    if utc_now() >= warranty_expires:
         return jsonify({"success": False, "error": "质保已过期"}), 400
 
     # 检查替换次数
@@ -2066,18 +2097,18 @@ def redeem_cdk_batch():
                     continue
 
             # 创建订单
-            warranty_expires = beijing_now() + timedelta(days=warranty_days)
+            warranty_expires = utc_now() + timedelta(days=warranty_days)
             _execute(db,
                 """INSERT INTO orders
                    (cdk_code, account_id, user_ip, warranty_days, warranty_expires_at, status)
                    VALUES (%s, %s, %s, %s, %s, 'active')""",
-                (cdk_code, account_id, request.remote_addr, warranty_days, warranty_expires.isoformat()),
+                (cdk_code, account_id, request.remote_addr, warranty_days, to_db_datetime(warranty_expires)),
             )
 
             # 更新CDK状态
             _execute(db,
                 "UPDATE cdks SET status = 'used', used_at = %s, used_by = %s, account_id = %s WHERE code = %s",
-                (beijing_now().isoformat(), request.remote_addr, account_id, cdk_code),
+                (to_db_datetime(utc_now()), request.remote_addr, account_id, cdk_code),
             )
 
             # 获取订单ID
@@ -2087,7 +2118,7 @@ def redeem_cdk_batch():
             _execute(db,
                 """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
                    VALUES (%s, %s, 'redeem', %s, %s, %s)""",
-                (account_id, order["id"], final_verify_classification, final_verify_details, beijing_now().isoformat())
+                (account_id, order["id"], final_verify_classification, final_verify_details, to_db_datetime(utc_now()))
             )
 
             # 解析token数据
@@ -2173,8 +2204,8 @@ def check_warranty_batch():
             account_check = check_account_status(order["account_id"]) if account else None
 
             # 检查是否在质保期内
-            warranty_expires = to_beijing_time(order["warranty_expires_at"])
-            in_warranty = beijing_now() < warranty_expires
+            warranty_expires = to_utc_time(order["warranty_expires_at"])
+            in_warranty = utc_now() < warranty_expires
 
             # 判断是否可以替换：质保内 + 未超替换次数 + 账号被封禁
             can_replace = (
@@ -2198,7 +2229,7 @@ def check_warranty_batch():
                     "cdk_code": order["cdk_code"],
                     "status": order["status"],
                     "warranty_days": order["warranty_days"],
-                    "warranty_expires_at": order["warranty_expires_at"],
+                    "warranty_expires_at": to_api_datetime(order["warranty_expires_at"]),
                     "replacement_count": order["replacement_count"],
                 },
                 "account": {
@@ -2266,8 +2297,8 @@ def request_replacement_batch():
                 continue
 
             # 检查质保期
-            warranty_expires = to_beijing_time(order["warranty_expires_at"])
-            if beijing_now() >= warranty_expires:
+            warranty_expires = to_utc_time(order["warranty_expires_at"])
+            if utc_now() >= warranty_expires:
                 results.append({"cdk": cdk_code, "success": False, "error": "质保已过期"})
                 failed_count += 1
                 continue
@@ -2456,14 +2487,16 @@ def admin_stats():
 
     # 质保内订单：状态为active且质保未过期
     warranty_orders = _execute(db,
-        "SELECT COUNT(*) as cnt FROM orders WHERE status = 'active' AND warranty_expires_at > NOW()"
+        "SELECT COUNT(*) as cnt FROM orders WHERE status = 'active' AND warranty_expires_at > %s",
+        (to_db_datetime(utc_now()),)
     ).fetchone()["cnt"]
 
     # 极限账号数：质保内订单都用完替换次数所需的额外账号数
     max_replacements = int(get_setting("max_replacements", "3"))
     warranty_order_replacements = _execute(db,
         "SELECT COALESCE(SUM(replacement_count), 0) as total FROM orders "
-        "WHERE status = 'active' AND warranty_expires_at > NOW()"
+        "WHERE status = 'active' AND warranty_expires_at > %s",
+        (to_db_datetime(utc_now()),)
     ).fetchone()["total"]
     # 每个质保内订单最多可替换 max_replacements 次，已替换 replacement_count 次
     # 极限还需账号数 = 质保内订单数 * max_replacements - 已替换总次数
@@ -3074,15 +3107,17 @@ def admin_orders():
         total = _execute(db, count_query).fetchone()["cnt"]
 
     # 动态判断订单状态（根据质保到期时间）
-    now = beijing_now()
+    now = utc_now()
     orders_list = []
     for order in orders:
         order_dict = dict(order)
+        order_dict["warranty_expires_at"] = to_api_datetime(order_dict.get("warranty_expires_at"))
+        order_dict["created_at"] = to_api_datetime(order_dict.get("created_at"))
         # 根据质保到期时间动态判断状态
         warranty_expires = order_dict.get("warranty_expires_at")
         if warranty_expires:
             try:
-                expires_dt = to_beijing_time(warranty_expires)
+                expires_dt = to_utc_time(warranty_expires)
                 if now >= expires_dt:
                     order_dict["effective_status"] = "expired"
                 else:
@@ -3249,7 +3284,7 @@ def get_verifications():
 def delete_expired_blocked_orders():
     """删除过期且账号封禁的订单"""
     db = get_db()
-    now = beijing_now()
+    now = to_db_datetime(utc_now())
 
     # 查找过期且账号封禁的订单
     orders = _execute(db, """
