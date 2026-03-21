@@ -52,6 +52,7 @@ def to_utc_time(dt_value):
         dt = datetime.fromisoformat(str(dt_value).replace("Z", "+00:00"))
 
     if dt.tzinfo is None:
+        # 数据库会话已设置 time_zone='+00:00'，所有无时区信息的值均为 UTC
         return dt.replace(tzinfo=UTC_TZ)
     return dt.astimezone(UTC_TZ)
 
@@ -545,7 +546,7 @@ def _build_kiro_warmup_payload(prompt: str, profile_arn: str) -> dict[str, Any]:
             "conversationId": str(uuid4()),
             "currentMessage": {
                 "userInputMessage": {
-                    "content": f"[Context: Current time is {datetime.now().strftime('%Y-%m-%d %H:%M:%S CST')}]\n\n{prompt}",
+                    "content": f"[Context: Current time is {beijing_now().strftime('%Y-%m-%d %H:%M:%S CST')}]\n\n{prompt}",
                     "modelId": "auto",
                     "origin": "AI_EDITOR",
                 }
@@ -839,7 +840,7 @@ def check_account_status(account_id: int, db=None) -> dict[str, Any]:
     if refresh_result.get("error") == "missing_client_credentials":
         _execute(db,
             "UPDATE accounts SET last_verified_at = %s WHERE id = %s",
-            (beijing_now().isoformat(), account_id),
+            (to_db_datetime(utc_now()), account_id),
         )
         db.commit()
         return {
@@ -893,7 +894,7 @@ def check_account_status(account_id: int, db=None) -> dict[str, Any]:
             refreshed_refresh_token or account["refresh_token"],
             refreshed_id_token or account["id_token"],
             new_status,
-            beijing_now().isoformat(),
+            to_db_datetime(utc_now()),
             account_id,
         )
         _execute(db,
@@ -915,7 +916,7 @@ def check_account_status(account_id: int, db=None) -> dict[str, Any]:
             refreshed_access_token or account["access_token"],
             refreshed_refresh_token or account["refresh_token"],
             refreshed_id_token or account["id_token"],
-            beijing_now().isoformat(),
+            to_db_datetime(utc_now()),
             account_id,
         )
         _execute(db,
@@ -1046,7 +1047,7 @@ def query_account_quota(account_id: int, db=None) -> dict[str, Any]:
                 refreshed_refresh_token or account["refresh_token"],
                 refreshed_id_token or account["id_token"],
                 token_data_json,
-                beijing_now().isoformat(),
+                to_db_datetime(utc_now()),
                 account_id,
             ),
         )
@@ -1099,12 +1100,12 @@ def query_account_quota(account_id: int, db=None) -> dict[str, Any]:
                             quota_info["trial_remaining"] = quota_info["trial_limit"] - quota_info["trial_used"]
                             trial_expiry = trial_info.get("freeTrialExpiry")
                             if trial_expiry:
-                                quota_info["trial_expiry"] = datetime.fromtimestamp(trial_expiry).strftime("%Y-%m-%d %H:%M:%S")
+                                quota_info["trial_expiry"] = datetime.fromtimestamp(trial_expiry, tz=UTC_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
                         # 重置时间
                         next_reset = usage.get("nextDateReset") or response_json.get("nextDateReset")
                         if next_reset:
-                            quota_info["next_reset"] = datetime.fromtimestamp(next_reset).strftime("%Y-%m-%d %H:%M:%S")
+                            quota_info["next_reset"] = datetime.fromtimestamp(next_reset, tz=UTC_TZ).strftime("%Y-%m-%d %H:%M:%S")
                         break
 
             # 用户信息
@@ -1216,7 +1217,7 @@ def warmup_account(account_id: int, db=None) -> dict[str, Any]:
             refreshed_refresh_token or account["refresh_token"],
             refreshed_id_token or account["id_token"],
             token_data_json,
-            beijing_now().isoformat(),
+            to_db_datetime(utc_now()),
             account_id,
         ),
     )
@@ -1383,7 +1384,7 @@ def redeem_cdk():
             _execute(db,
                 """INSERT INTO verifications (account_id, verification_type, result, details, verified_at)
                    VALUES (%s, 'redeem_trial', %s, %s, %s)""",
-                (trial_account_id, verify_classification, verify_details, beijing_now().isoformat())
+                (trial_account_id, verify_classification, verify_details, to_db_datetime(utc_now()))
             )
 
             if verify_classification == "available":
@@ -1418,7 +1419,7 @@ def redeem_cdk():
         _execute(db,
             """INSERT INTO verifications (account_id, verification_type, result, details, verified_at)
                VALUES (%s, 'redeem_bound', %s, %s, %s)""",
-            (account_id, final_verify_classification, final_verify_details, beijing_now().isoformat())
+            (account_id, final_verify_classification, final_verify_details, to_db_datetime(utc_now()))
         )
 
         if final_verify_classification == "blocked":
@@ -1677,7 +1678,7 @@ def download_orders_batch():
         return jsonify({"success": False, "error": "没有有效的订单"}), 400
 
     content = json.dumps(payloads, ensure_ascii=False, indent=2).encode("utf-8")
-    filename = f"accounts_batch_{len(payloads)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"accounts_batch_{len(payloads)}_{beijing_now().strftime('%Y%m%d_%H%M%S')}.json"
     return send_file(
         io.BytesIO(content),
         as_attachment=True,
@@ -1730,7 +1731,7 @@ def download_orders_batch_kiro():
         return jsonify({"success": False, "error": "没有有效的订单"}), 400
 
     content = json.dumps(payloads, ensure_ascii=False, indent=2).encode("utf-8")
-    filename = f"accounts_kiro_batch_{len(payloads)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"accounts_kiro_batch_{len(payloads)}_{beijing_now().strftime('%Y%m%d_%H%M%S')}.json"
     return send_file(
         io.BytesIO(content),
         as_attachment=True,
@@ -1841,7 +1842,7 @@ def request_replacement():
     _execute(db,
         """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
            VALUES (%s, %s, 'replace_old', %s, %s, %s)""",
-        (order["account_id"], order["id"], old_verify_classification, old_verify_details, beijing_now().isoformat())
+        (order["account_id"], order["id"], old_verify_classification, old_verify_details, to_db_datetime(utc_now()))
     )
 
     if old_verify_classification == "available":
@@ -1894,7 +1895,7 @@ def request_replacement():
     _execute(db,
         """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
            VALUES (%s, %s, 'replace_new', %s, %s, %s)""",
-        (new_account_id, order["id"], new_verify_classification, new_verify_details, beijing_now().isoformat())
+        (new_account_id, order["id"], new_verify_classification, new_verify_details, to_db_datetime(utc_now()))
     )
 
     # 标记旧账号
@@ -2046,7 +2047,7 @@ def redeem_cdk_batch():
                     _execute(db,
                         """INSERT INTO verifications (account_id, verification_type, result, details, verified_at)
                            VALUES (%s, 'redeem_trial', %s, %s, %s)""",
-                        (trial_account_id, verify_classification, verify_details, beijing_now().isoformat())
+                        (trial_account_id, verify_classification, verify_details, to_db_datetime(utc_now()))
                     )
 
                     if verify_classification == "available":
@@ -2082,7 +2083,7 @@ def redeem_cdk_batch():
                 _execute(db,
                     """INSERT INTO verifications (account_id, verification_type, result, details, verified_at)
                        VALUES (%s, 'redeem_bound', %s, %s, %s)""",
-                    (account_id, final_verify_classification, final_verify_details, beijing_now().isoformat())
+                    (account_id, final_verify_classification, final_verify_details, to_db_datetime(utc_now()))
                 )
 
                 if final_verify_classification == "blocked":
@@ -2321,7 +2322,7 @@ def request_replacement_batch():
             _execute(db,
                 """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
                    VALUES (%s, %s, 'replace_old', %s, %s, %s)""",
-                (order["account_id"], order["id"], old_verify_classification, old_verify_details, beijing_now().isoformat())
+                (order["account_id"], order["id"], old_verify_classification, old_verify_details, to_db_datetime(utc_now()))
             )
 
             if old_verify_classification != "blocked":
@@ -2373,7 +2374,7 @@ def request_replacement_batch():
             _execute(db,
                 """INSERT INTO verifications (account_id, order_id, verification_type, result, details, verified_at)
                    VALUES (%s, %s, 'replace_new', %s, %s, %s)""",
-                (new_account_id, order["id"], new_verify_classification, new_verify_details, beijing_now().isoformat())
+                (new_account_id, order["id"], new_verify_classification, new_verify_details, to_db_datetime(utc_now()))
             )
 
             # 标记旧账号
