@@ -2480,6 +2480,16 @@ def admin_stats():
         "SELECT COUNT(*) as cnt FROM accounts WHERE status = 'available' "
         "AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)"
     ).fetchone()["cnt"]
+    idle_accounts_by_created_date_rows = _execute(
+        db,
+        """SELECT DATE_FORMAT(DATE(created_at), '%Y-%m-%d') as date, COUNT(*) as count
+           FROM accounts
+           WHERE status = 'available'
+             AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)
+           GROUP BY DATE(created_at)
+           ORDER BY DATE(created_at) ASC"""
+    ).fetchall()
+    idle_accounts_by_created_date = [dict(row) for row in idle_accounts_by_created_date_rows]
 
     total_orders = _execute(db, "SELECT COUNT(*) as cnt FROM orders").fetchone()["cnt"]
     active_orders = _execute(db,
@@ -2516,6 +2526,7 @@ def admin_stats():
             "available": available_accounts,
             "blocked": blocked_accounts,
             "idle": idle_accounts,
+            "idle_by_created_date": idle_accounts_by_created_date,
         },
         "orders": {
             "total": total_orders,

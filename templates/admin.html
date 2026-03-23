@@ -108,6 +108,86 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
             margin-bottom: 20px;
         }
+        .dashboard-chart-card {
+            margin-top: 10px;
+        }
+        .chart-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 260px;
+            color: #888;
+            font-size: 14px;
+            background: #fafbfc;
+            border: 1px dashed #d9dee7;
+            border-radius: 10px;
+        }
+        .histogram-chart {
+            display: flex;
+            gap: 18px;
+            align-items: stretch;
+            min-height: 260px;
+        }
+        .histogram-y-axis {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            font-size: 12px;
+            color: #666;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            padding-top: 10px;
+        }
+        .histogram-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .histogram-plot {
+            min-height: 220px;
+            padding: 16px 16px 8px;
+            border-left: 1px solid #d9dee7;
+            border-bottom: 1px solid #d9dee7;
+            background: linear-gradient(to top, rgba(102, 126, 234, 0.04), rgba(102, 126, 234, 0));
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            overflow-x: auto;
+        }
+        .histogram-bar-group {
+            min-width: 64px;
+            flex: 1 0 64px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .histogram-bar-count {
+            font-size: 12px;
+            color: #555;
+            font-weight: 600;
+        }
+        .histogram-bar {
+            width: 100%;
+            min-height: 8px;
+            border-radius: 8px 8px 0 0;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+        }
+        .histogram-bar-label {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            word-break: break-word;
+            line-height: 1.4;
+        }
+        .histogram-x-axis {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
         .card-header {
             display: flex;
             justify-content: space-between;
@@ -540,6 +620,14 @@
             <div class="stats-grid" id="stats-container">
                 <!-- 统计数据将通过JS加载 -->
             </div>
+            <div class="card dashboard-chart-card">
+                <div class="card-header">
+                    <h3>空闲账号创建日期直方图</h3>
+                </div>
+                <div id="idle-accounts-chart">
+                    <div class="chart-empty">加载中...</div>
+                </div>
+            </div>
         </div>
 
         <!-- CDK管理 -->
@@ -944,9 +1032,44 @@
                         </div>
                     </div>
                 `;
+
+                renderIdleAccountsChart(data.accounts.idle_by_created_date || []);
             } catch (error) {
                 console.error('加载统计失败:', error);
+                document.getElementById('idle-accounts-chart').innerHTML = '<div class="chart-empty">加载失败，请稍后重试</div>';
             }
+        }
+
+        function renderIdleAccountsChart(items) {
+            const container = document.getElementById('idle-accounts-chart');
+            if (!items.length) {
+                container.innerHTML = '<div class="chart-empty">暂无空闲账号数据</div>';
+                return;
+            }
+
+            const counts = items.map(item => Number(item.count) || 0);
+            const maxCount = Math.max(...counts, 0);
+            const barGroups = items.map(item => {
+                const count = Number(item.count) || 0;
+                const height = maxCount > 0 ? Math.max((count / maxCount) * 180, count > 0 ? 8 : 0) : 0;
+                return `
+                    <div class="histogram-bar-group" title="${item.date}: ${count}">
+                        <div class="histogram-bar-count">${count}</div>
+                        <div class="histogram-bar" style="height: ${height}px;"></div>
+                        <div class="histogram-bar-label">${item.date}</div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="histogram-chart">
+                    <div class="histogram-y-axis">账号数量</div>
+                    <div class="histogram-main">
+                        <div class="histogram-plot">${barGroups}</div>
+                        <div class="histogram-x-axis">创建日期</div>
+                    </div>
+                </div>
+            `;
         }
 
         // 加载CDK列表
