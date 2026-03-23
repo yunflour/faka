@@ -2482,7 +2482,7 @@ def admin_stats():
     ).fetchone()["cnt"]
     idle_accounts_by_created_date_rows = _execute(
         db,
-        """SELECT DATE_FORMAT(DATE(created_at), '%Y-%m-%d') as date, COUNT(*) as count
+        """SELECT DATE_FORMAT(DATE(created_at), '%%Y-%%m-%%d') as date, COUNT(*) as count
            FROM accounts
            WHERE status = 'available'
              AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)
