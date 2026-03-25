@@ -683,6 +683,13 @@ async function redeemCDK() {
                             <p><strong>账号邮箱:</strong> ${account.email}</p>
                             <p><strong>账号状态:</strong> <span class="status-badge ${statusClass}">${statusText}</span></p>
                         </div>
+                        <div style="margin-top:15px; display:flex; gap:8px; flex-wrap:wrap;">
+                            <select class="btn btn-success" style="color: #fff; background-color: #28a745;">
+                                <option value="cpa">CPA格式</option>
+                                <option value="kiro" selected>Kiro Account Manager</option>
+                            </select>
+                            <button class="btn btn-success" onclick="downloadOrderJson(${order.id}, this.previousElementSibling.value)">下载JSON</button>
+                        </div>
                         ${warranty.can_replace ? `
                         <button class="btn btn-danger" style="margin-top:15px" onclick="requestReplacement('${order.cdk_code}')">申请替换账号</button>
                         <p style="margin-top:10px;color:#666;font-size:14px">${warranty.reason}</p>
@@ -915,6 +922,27 @@ async function redeemCDK() {
             }
         }
 
+        function copyBatchWarrantyResults(items) {
+            let text = '';
+            items.forEach(item => {
+                const acc = item.account;
+                text += `=== ${item.cdk} ===\n`;
+                text += `邮箱: ${acc?.email || '-'}\n`;
+                text += `Access Token: ${acc?.access_token || '-'}\n`;
+                text += `Refresh Token: ${acc?.refresh_token || '-'}\n`;
+                text += `ID Token: ${acc?.id_token || '-'}\n\n`;
+            });
+            navigator.clipboard.writeText(text).then(() => alert('已复制全部账号信息'));
+        }
+
+        function downloadBatchWarrantyJson(items, format) {
+            const normalizedItems = items.map(item => ({
+                ...item,
+                order_id: item.order_id || item.order?.id
+            }));
+            downloadBatchJson(normalizedItems, format);
+        }
+
         // 批量质保查询
         async function checkWarrantyBatch() {
             const cdksInput = document.getElementById('warranty-batch-input').value.trim();
@@ -980,6 +1008,23 @@ async function redeemCDK() {
                     });
 
                     html += '</div>';
+
+                    const successItems = data.results.filter(r => r.success && r.order?.id && r.account);
+                    if (successItems.length > 0) {
+                        html += `
+                            <div class="batch-actions">
+                                <button class="btn btn-success" onclick="copyBatchWarrantyResults(${JSON.stringify(successItems).replace(/"/g, '&quot;')})">复制全部账号</button>
+                                <select class="btn btn-primary" style="padding: 6px 12px; color: #fff; background-color: #007bff;">
+                                    <option value="kiro-batch" selected>Kiro Account Manager (单文件)</option>
+                                    <option value="kiro">Kiro Account Manager (多文件)</option>
+                                    <option value="cpa">CPA格式 (多文件)</option>
+                                    <option value="cpa-batch">CPA格式 (单-不可直接导入)</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="downloadBatchWarrantyJson(${JSON.stringify(successItems).replace(/"/g, '&quot;')}, this.previousElementSibling.value)">下载JSON</button>
+                            </div>
+                        `;
+                    }
+
                     result.className = 'result success';
                     result.innerHTML = html;
                 } else {
