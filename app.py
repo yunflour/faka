@@ -16,9 +16,11 @@ import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import Any, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, unquote, urlparse
 from uuid import uuid4
 
+import psycopg2
+import psycopg2.extras
 import pymysql
 import pymysql.cursors
 from dbutils.pooled_db import PooledDB
@@ -173,20 +175,299 @@ app.secret_key = CONFIG["server"]["secret_key"]
 def _parse_database_url(url: str) -> dict:
     """解析 DATABASE_URL 为连接参数"""
     parsed = urlparse(url)
-    return {
-        "host": parsed.hostname or "localhost",
-        "port": parsed.port or 3306,
-        "user": parsed.username or "root",
-        "password": parsed.password or "",
-        "database": (parsed.path or "/railway").lstrip("/"),
-    }
+    scheme = (parsed.scheme or "mysql").lower()
+    mysql_schemes = {"mysql", "mysql+pymysql"}
+    postgres_schemes = {"postgres", "postgresql", "postgresql+psycopg2"}
 
+    if scheme in postgres_schemes:
+        dialect = "postgresql"
+    elif scheme in mysql_schemes:
+        dialect = "mysql"
+    else:
+        raise ValueError(f"Unsupported DATABASE_URL scheme: {parsed.scheme or '<empty>'}")
+
+    default_port = 5432 if dialect == "postgresql" else 3306
+    query_options = {
+        key: value
+        for key, value in parse_qsl(parsed.query, keep_blank_values=False)
+        if value != ""
+    }
+    return {
+        "dialect": dialect,
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or default_port,
+        "user": unquote(parsed.username or ("postgres" if dialect == "postgresql" else "root")),
+        "password": unquote(parsed.password or ""),
+        "database": unquote((parsed.path or "/railway").lstrip("/")),
+        "options": query_options,
+    }
 
 
 _db_params = _parse_database_url(CONFIG["database"]["url"])
 print(f"[DB] DATABASE_URL = {CONFIG['database']['url'][:30]}...", flush=True)
-print(f"[DB] Parsed: host={_db_params['host']}, port={_db_params['port']}, db={_db_params['database']}", flush=True)
+print(
+    f"[DB] Parsed: dialect={_db_params['dialect']}, host={_db_params['host']}, port={_db_params['port']}, db={_db_params['database']}",
+    flush=True,
+)
 _pool = None
+
+
+def _get_db_dialect() -> str:
+    return _db_params["dialect"]
+
+
+def _is_mysql() -> bool:
+    return _get_db_dialect() == "mysql"
+
+
+def _is_postgres() -> bool:
+    return _get_db_dialect() == "postgresql"
+
+
+def _get_db_driver():
+    return pymysql if _is_mysql() else psycopg2
+
+
+def _get_pool_kwargs() -> dict:
+    if _is_mysql():
+        return {
+            "host": _db_params["host"],
+            "port": _db_params["port"],
+            "user": _db_params["user"],
+            "password": _db_params["password"],
+            "database": _db_params["database"],
+            "charset": "utf8mb4",
+            "cursorclass": pymysql.cursors.DictCursor,
+            "autocommit": False,
+        }
+
+    pg_options = _db_params.get("options", {})
+    pg_kwargs = {
+        "host": _db_params["host"],
+        "port": _db_params["port"],
+        "user": _db_params["user"],
+        "password": _db_params["password"],
+        "dbname": _db_params["database"],
+        "cursor_factory": psycopg2.extras.RealDictCursor,
+    }
+    for key in ("sslmode", "options", "application_name"):
+        value = pg_options.get(key)
+        if value:
+            pg_kwargs[key] = value
+    connect_timeout = pg_options.get("connect_timeout")
+    if connect_timeout:
+        try:
+            pg_kwargs["connect_timeout"] = int(connect_timeout)
+        except ValueError:
+            pass
+    return pg_kwargs
+
+
+def _run_connection_init(db):
+    with db.cursor() as cursor:
+        if _is_mysql():
+            cursor.execute("SET time_zone = '+00:00'")
+        else:
+            cursor.execute("SET TIME ZONE 'UTC'")
+
+
+def _get_integrity_error_types() -> tuple[type[Exception], ...]:
+    return (pymysql.IntegrityError, psycopg2.IntegrityError)
+
+
+_INTEGRITY_ERRORS = _get_integrity_error_types()
+
+
+def _quote_identifier(name: str) -> str:
+    quote = "`" if _is_mysql() else '"'
+    return f"{quote}{name}{quote}"
+
+
+def _sql_insert_default_setting() -> str:
+    key_column = _quote_identifier("key")
+    if _is_mysql():
+        return f"INSERT IGNORE INTO settings ({key_column}, value) VALUES (%s, %s)"
+    return f"INSERT INTO settings ({key_column}, value) VALUES (%s, %s) ON CONFLICT ({key_column}) DO NOTHING"
+
+
+def _sql_upsert_setting() -> str:
+    key_column = _quote_identifier("key")
+    if _is_mysql():
+        return f"INSERT INTO settings ({key_column}, value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE value = %s"
+    return f"INSERT INTO settings ({key_column}, value) VALUES (%s, %s) ON CONFLICT ({key_column}) DO UPDATE SET value = EXCLUDED.value"
+
+
+def _sql_admin_stats_idle_accounts_by_created_date() -> str:
+    if _is_mysql():
+        return """SELECT DATE_FORMAT(created_date, '%%Y-%%m-%%d') as date, count
+           FROM (
+               SELECT DATE(created_at) as created_date, COUNT(*) as count
+               FROM accounts
+               WHERE status = 'available'
+                 AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)
+               GROUP BY DATE(created_at)
+           ) grouped_idle_accounts
+           ORDER BY created_date ASC"""
+    return """SELECT TO_CHAR(created_date, 'YYYY-MM-DD') as date, count
+           FROM (
+               SELECT DATE(created_at) as created_date, COUNT(*) as count
+               FROM accounts
+               WHERE status = 'available'
+                 AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)
+               GROUP BY DATE(created_at)
+           ) grouped_idle_accounts
+           ORDER BY created_date ASC"""
+
+
+def _sql_like(column: str) -> str:
+    operator = "LIKE" if _is_mysql() else "ILIKE"
+    return f"{column} {operator} %s"
+
+
+def _get_schema_sqls() -> list[str]:
+    if _is_mysql():
+        return [
+            """
+            CREATE TABLE IF NOT EXISTS cdks (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                code VARCHAR(100) UNIQUE NOT NULL,
+                account_id INT,
+                status VARCHAR(20) DEFAULT 'unused',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                used_at TIMESTAMP NULL,
+                used_by VARCHAR(100)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                email VARCHAR(255) NOT NULL,
+                access_token TEXT,
+                refresh_token TEXT,
+                id_token TEXT,
+                token_data LONGTEXT,
+                status VARCHAR(20) DEFAULT 'available',
+                last_verified_at TIMESTAMP NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS orders (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                cdk_code VARCHAR(100) NOT NULL,
+                account_id INT NOT NULL,
+                user_ip VARCHAR(50),
+                warranty_days INT DEFAULT 7,
+                warranty_expires_at TIMESTAMP NULL,
+                replacement_count INT DEFAULT 0,
+                status VARCHAR(20) DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES accounts(id),
+                FOREIGN KEY (cdk_code) REFERENCES cdks(code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS replacements (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                order_id INT NOT NULL,
+                old_account_id INT NOT NULL,
+                new_account_id INT NOT NULL,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (order_id) REFERENCES orders(id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS verifications (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                account_id INT NOT NULL,
+                order_id INT,
+                verification_type VARCHAR(20) NOT NULL,
+                result VARCHAR(20) NOT NULL,
+                details TEXT,
+                verified_at DATETIME NOT NULL,
+                FOREIGN KEY (account_id) REFERENCES accounts(id),
+                FOREIGN KEY (order_id) REFERENCES orders(id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                `key` VARCHAR(100) PRIMARY KEY,
+                value TEXT NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+        ]
+    return [
+        """
+        CREATE TABLE IF NOT EXISTS cdks (
+            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            code VARCHAR(100) UNIQUE NOT NULL,
+            account_id INTEGER,
+            status VARCHAR(20) DEFAULT 'unused',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            used_at TIMESTAMP NULL,
+            used_by VARCHAR(100)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            email VARCHAR(255) NOT NULL,
+            access_token TEXT,
+            refresh_token TEXT,
+            id_token TEXT,
+            token_data TEXT,
+            status VARCHAR(20) DEFAULT 'available',
+            last_verified_at TIMESTAMP NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            cdk_code VARCHAR(100) NOT NULL,
+            account_id INTEGER NOT NULL,
+            user_ip VARCHAR(50),
+            warranty_days INTEGER DEFAULT 7,
+            warranty_expires_at TIMESTAMP NULL,
+            replacement_count INTEGER DEFAULT 0,
+            status VARCHAR(20) DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES accounts(id),
+            FOREIGN KEY (cdk_code) REFERENCES cdks(code)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS replacements (
+            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            order_id INTEGER NOT NULL,
+            old_account_id INTEGER NOT NULL,
+            new_account_id INTEGER NOT NULL,
+            reason TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (order_id) REFERENCES orders(id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS verifications (
+            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            account_id INTEGER NOT NULL,
+            order_id INTEGER,
+            verification_type VARCHAR(20) NOT NULL,
+            result VARCHAR(20) NOT NULL,
+            details TEXT,
+            verified_at TIMESTAMP NOT NULL,
+            FOREIGN KEY (account_id) REFERENCES accounts(id),
+            FOREIGN KEY (order_id) REFERENCES orders(id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS settings (
+            "key" VARCHAR(100) PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """,
+    ]
 
 
 def _get_pool():
@@ -194,19 +475,12 @@ def _get_pool():
     global _pool
     if _pool is None:
         _pool = PooledDB(
-            creator=pymysql,
+            creator=_get_db_driver(),
             maxconnections=10,
             mincached=0,
             maxcached=5,
             blocking=True,
-            host=_db_params["host"],
-            port=_db_params["port"],
-            user=_db_params["user"],
-            password=_db_params["password"],
-            database=_db_params["database"],
-            charset="utf8mb4",
-            cursorclass=pymysql.cursors.DictCursor,
-            autocommit=False,
+            **_get_pool_kwargs(),
         )
     return _pool
 
@@ -219,8 +493,7 @@ def get_db():
     db = getattr(g, "_database", None)
     if db is None:
         db = g._database = _get_pool().connection()
-        with db.cursor() as cursor:
-            cursor.execute("SET time_zone = '+00:00'")
+        _run_connection_init(db)
     return db
 
 
@@ -240,121 +513,42 @@ def _execute(db, sql, params=None):
 
 
 def init_db():
-    """初始化数据库（MySQL）"""
+    """初始化数据库表结构"""
     conn = _get_pool().connection()
-    cursor = conn.cursor()
+    try:
+        _run_connection_init(conn)
+        cursor = conn.cursor()
+        for sql in _get_schema_sqls():
+            cursor.execute(sql)
 
-    # CDK表
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cdks (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            code VARCHAR(100) UNIQUE NOT NULL,
-            account_id INT,
-            status VARCHAR(20) DEFAULT 'unused',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            used_at TIMESTAMP NULL,
-            used_by VARCHAR(100)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
+        default_settings = [
+            ("warranty_days", str(CONFIG["warranty"]["default_days"])),
+            ("max_replacements", str(CONFIG["warranty"]["max_replacements"])),
+            ("site_title", "Kiro 发卡平台"),
+            ("site_notice", "欢迎使用Kiro发卡平台"),
+        ]
+        insert_sql = _sql_insert_default_setting()
+        for key, value in default_settings:
+            cursor.execute(insert_sql, (key, value))
 
-    # 账号表
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS accounts (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            email VARCHAR(255) NOT NULL,
-            access_token TEXT,
-            refresh_token TEXT,
-            id_token TEXT,
-            token_data LONGTEXT,
-            status VARCHAR(20) DEFAULT 'available',
-            last_verified_at TIMESTAMP NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
-
-    # 订单表
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS orders (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            cdk_code VARCHAR(100) NOT NULL,
-            account_id INT NOT NULL,
-            user_ip VARCHAR(50),
-            warranty_days INT DEFAULT 7,
-            warranty_expires_at TIMESTAMP NULL,
-            replacement_count INT DEFAULT 0,
-            status VARCHAR(20) DEFAULT 'active',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (account_id) REFERENCES accounts(id),
-            FOREIGN KEY (cdk_code) REFERENCES cdks(code)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
-
-    # 替换记录表
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS replacements (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            order_id INT NOT NULL,
-            old_account_id INT NOT NULL,
-            new_account_id INT NOT NULL,
-            reason TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (order_id) REFERENCES orders(id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
-
-    # 校验记录表
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS verifications (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            account_id INT NOT NULL,
-            order_id INT,
-            verification_type VARCHAR(20) NOT NULL,
-            result VARCHAR(20) NOT NULL,
-            details TEXT,
-            verified_at DATETIME NOT NULL,
-            FOREIGN KEY (account_id) REFERENCES accounts(id),
-            FOREIGN KEY (order_id) REFERENCES orders(id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
-
-    # 系统设置表
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            `key` VARCHAR(100) PRIMARY KEY,
-            value TEXT NOT NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
-
-    # 初始化默认设置
-    default_settings = [
-        ("warranty_days", str(CONFIG["warranty"]["default_days"])),
-        ("max_replacements", str(CONFIG["warranty"]["max_replacements"])),
-        ("site_title", "Kiro 发卡平台"),
-        ("site_notice", "欢迎使用Kiro发卡平台"),
-    ]
-    for key, value in default_settings:
-        cursor.execute(
-            "INSERT IGNORE INTO settings (`key`, value) VALUES (%s, %s)", (key, value)
-        )
-
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_setting(key: str, default: str = "") -> str:
     """获取系统设置"""
     db = get_db()
-    row = _execute(db, "SELECT value FROM settings WHERE `key` = %s", (key,)).fetchone()
+    key_column = _quote_identifier("key")
+    row = _execute(db, f"SELECT value FROM settings WHERE {key_column} = %s", (key,)).fetchone()
     return row["value"] if row else default
 
 
 def set_setting(key: str, value: str):
     """设置系统设置"""
     db = get_db()
-    _execute(
-        db, "INSERT INTO settings (`key`, value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE value = %s",
-        (key, value, value)
-    )
+    params = (key, value, value) if _is_mysql() else (key, value)
+    _execute(db, _sql_upsert_setting(), params)
     db.commit()
 
 
@@ -1278,7 +1472,7 @@ def create_cdks(count: int, bind_account_ids: list[int] = None) -> list[dict]:
                 (code, account_id, "unused"),
             )
             results.append({"code": code, "success": True})
-        except pymysql.IntegrityError:
+        except _INTEGRITY_ERRORS:
             results.append({"code": code, "success": False, "error": "重复的CDK"})
 
     db.commit()
@@ -2482,15 +2676,7 @@ def admin_stats():
     ).fetchone()["cnt"]
     idle_accounts_by_created_date_rows = _execute(
         db,
-        """SELECT DATE_FORMAT(created_date, '%%Y-%%m-%%d') as date, count
-           FROM (
-               SELECT DATE(created_at) as created_date, COUNT(*) as count
-               FROM accounts
-               WHERE status = 'available'
-                 AND id NOT IN (SELECT DISTINCT account_id FROM orders WHERE account_id IS NOT NULL)
-               GROUP BY DATE(created_at)
-           ) grouped_idle_accounts
-           ORDER BY created_date ASC"""
+        _sql_admin_stats_idle_accounts_by_created_date(),
     ).fetchall()
     idle_accounts_by_created_date = [dict(row) for row in idle_accounts_by_created_date_rows]
 
@@ -2563,7 +2749,7 @@ def admin_cdks():
             where_conditions.append("status = %s")
             params.append(status)
         if search:
-            where_conditions.append("code LIKE %s")
+            where_conditions.append(_sql_like("code"))
             params.append(f"%{search}%")
 
         if where_conditions:
@@ -2768,7 +2954,7 @@ def admin_accounts():
             where_conditions.append("status = %s")
             params.append(status)
         if email_search:
-            where_conditions.append("email LIKE %s")
+            where_conditions.append(_sql_like("email"))
             params.append(f"%{email_search}%")
 
         if where_conditions:
@@ -2880,7 +3066,7 @@ def admin_accounts():
             delete_placeholders = ",".join("%s" for _ in deletable_ids)
             try:
                 cursor = _execute(db, f"DELETE FROM accounts WHERE id IN ({delete_placeholders})", deletable_ids)
-            except pymysql.err.IntegrityError:
+            except _INTEGRITY_ERRORS:
                 db.rollback()
                 return jsonify({
                     "success": False,
