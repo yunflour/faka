@@ -505,11 +505,27 @@ def close_connection(exception):
         db.close()
 
 
+class _QueryResult:
+    def __init__(self, rows=None, rowcount: int = 0):
+        self._rows = list(rows or [])
+        self.rowcount = rowcount
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return list(self._rows)
+
+
 def _execute(db, sql, params=None):
-    """执行 SQL 并返回 cursor（封装 DictCursor 用法）"""
+    """执行 SQL 并返回兼容 fetchone/fetchall/rowcount 的结果对象"""
     cursor = db.cursor()
-    cursor.execute(sql, params or ())
-    return cursor
+    try:
+        cursor.execute(sql, params or ())
+        rows = cursor.fetchall() if cursor.description else []
+        return _QueryResult(rows=rows, rowcount=cursor.rowcount)
+    finally:
+        cursor.close()
 
 
 def init_db():
