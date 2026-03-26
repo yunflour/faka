@@ -3419,6 +3419,9 @@ def delete_orders_batch():
             # 删除替换记录
             _execute(db, "DELETE FROM replacements WHERE order_id = %s", (order_id,))
 
+            # 删除校验记录
+            _execute(db, "DELETE FROM verifications WHERE order_id = %s", (order_id,))
+
             # 删除订单
             _execute(db, "DELETE FROM orders WHERE id = %s", (order_id,))
 
