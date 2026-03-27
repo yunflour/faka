@@ -485,11 +485,13 @@
             });
         }
 
-        function downloadOrderJson(orderId, format) {
+        function downloadOrderJson(orderId, cdkCode, format) {
+            const normalizedCdk = String(cdkCode || '').trim().toUpperCase();
+            const query = normalizedCdk ? `?cdk=${encodeURIComponent(normalizedCdk)}` : '';
             if (format === 'kiro') {
-                window.open(`/api/order/${orderId}/download/kiro`, '_blank');
+                window.open(`/api/order/${orderId}/download/kiro${query}`, '_blank');
             } else {
-                window.open(`/api/order/${orderId}/download`, '_blank');
+                window.open(`/api/order/${orderId}/download${query}`, '_blank');
             }
         }
 
@@ -521,13 +523,13 @@ async function redeemCDK() {
                         result.innerHTML = `
                             <h3>CDK已使用</h3>
                             <p>此CDK已于之前使用，订单号: ${data.order_id}</p>
-                            <button class="btn btn-primary" style="margin-top:15px" onclick="viewOrder(${data.order_id})">查看订单详情</button>
+                            <button class="btn btn-primary" style="margin-top:15px" onclick="viewOrder(${data.order_id}, '${cdk}')">查看订单详情</button>
                             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
                                 <select class="btn btn-success" style="color: #fff; background-color: #28a745;">
                                     <option value="cpa">CPA格式</option>
                                     <option value="kiro" selected>Kiro Account Manager</option>
                                 </select>
-                                <button class="btn btn-success" onclick="downloadOrderJson(${data.order_id}, this.previousElementSibling.value)">下载JSON</button>
+                                <button class="btn btn-success" onclick="downloadOrderJson(${data.order_id}, '${cdk}', this.previousElementSibling.value)">下载JSON</button>
                             </div>
                         `;
                     } else {
@@ -567,7 +569,7 @@ async function redeemCDK() {
                                     <option value="cpa">CPA格式</option>
                                     <option value="kiro" selected>Kiro Account Manager</option>
                                 </select>
-                                <button class="btn btn-success" onclick="downloadOrderJson(${data.order_id}, this.previousElementSibling.value)">下载JSON</button>
+                                <button class="btn btn-success" onclick="downloadOrderJson(${data.order_id}, '${cdk}', this.previousElementSibling.value)">下载JSON</button>
                             </div>
                         `;
                     }
@@ -582,9 +584,11 @@ async function redeemCDK() {
             }
         }
 
-        async function viewOrder(orderId) {
+        async function viewOrder(orderId, cdkCode) {
             try {
-                const response = await fetch('/api/order/' + orderId);
+                const normalizedCdk = String(cdkCode || document.getElementById('cdk-input')?.value || '').trim().toUpperCase();
+                const query = normalizedCdk ? `?cdk=${encodeURIComponent(normalizedCdk)}` : '';
+                const response = await fetch('/api/order/' + orderId + query);
                 const data = await response.json();
 
                 if (data.success) {
@@ -623,7 +627,7 @@ async function redeemCDK() {
                                 <option value="cpa">CPA格式</option>
                                 <option value="kiro" selected>Kiro Account Manager</option>
                             </select>
-                            <button class="btn btn-success" onclick="downloadOrderJson(${order.id}, this.previousElementSibling.value)">下载JSON</button>
+                            <button class="btn btn-success" onclick="downloadOrderJson(${order.id}, '${order.cdk_code}', this.previousElementSibling.value)">下载JSON</button>
                         </div>
                     `;
                 }
@@ -688,7 +692,7 @@ async function redeemCDK() {
                                 <option value="cpa">CPA格式</option>
                                 <option value="kiro" selected>Kiro Account Manager</option>
                             </select>
-                            <button class="btn btn-success" onclick="downloadOrderJson(${order.id}, this.previousElementSibling.value)">下载JSON</button>
+                            <button class="btn btn-success" onclick="downloadOrderJson(${order.id}, '${order.cdk_code}', this.previousElementSibling.value)">下载JSON</button>
                         </div>
                         ${warranty.can_replace ? `
                         <button class="btn btn-danger" style="margin-top:15px" onclick="requestReplacement('${order.cdk_code}')">申请替换账号</button>
@@ -755,7 +759,7 @@ async function redeemCDK() {
                                 <option value="cpa">CPA格式</option>
                                 <option value="kiro" selected>Kiro Account Manager</option>
                             </select>
-                            <button class="btn btn-success" onclick="downloadOrderJson(${data.order_id}, this.previousElementSibling.value)">下载JSON</button>
+                            <button class="btn btn-success" onclick="downloadOrderJson(${data.order_id}, '${data.cdk}', this.previousElementSibling.value)">下载JSON</button>
                         </div>
                     `;
                 } else {
@@ -876,14 +880,16 @@ async function redeemCDK() {
         }
 
         function downloadBatchJson(items, format) {
-            const orderIds = items.filter(item => item.order_id).map(item => item.order_id);
+            const validItems = items.filter(item => item.order_id && item.cdk);
+            const orderIds = validItems.map(item => item.order_id);
+            const cdkCodes = validItems.map(item => String(item.cdk || '').trim().toUpperCase());
 
             if (format === 'cpa-batch') {
                 // CPA格式单文件：调用后端批量下载接口
                 fetch('/api/orders/download', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({order_ids: orderIds})
+                    body: JSON.stringify({order_ids: orderIds, cdk_codes: cdkCodes})
                 }).then(resp => resp.blob()).then(blob => {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -897,7 +903,7 @@ async function redeemCDK() {
                 fetch('/api/orders/download/kiro', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({order_ids: orderIds})
+                    body: JSON.stringify({order_ids: orderIds, cdk_codes: cdkCodes})
                 }).then(resp => resp.blob()).then(blob => {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -908,16 +914,15 @@ async function redeemCDK() {
                 }).catch(err => alert('下载失败: ' + err.message));
             } else {
                 // 多文件下载：每个账号单独下载
-                items.forEach((item, index) => {
-                    if (item.order_id) {
-                        setTimeout(() => {
-                            if (format === 'kiro') {
-                                window.open(`/api/order/${item.order_id}/download/kiro`, '_blank');
-                            } else {
-                                window.open(`/api/order/${item.order_id}/download`, '_blank');
-                            }
-                        }, index * 200);
-                    }
+                validItems.forEach((item, index) => {
+                    setTimeout(() => {
+                        const query = `?cdk=${encodeURIComponent(String(item.cdk || '').trim().toUpperCase())}`;
+                        if (format === 'kiro') {
+                            window.open(`/api/order/${item.order_id}/download/kiro${query}`, '_blank');
+                        } else {
+                            window.open(`/api/order/${item.order_id}/download${query}`, '_blank');
+                        }
+                    }, index * 200);
                 });
             }
         }
@@ -1147,14 +1152,16 @@ async function redeemCDK() {
         }
 
         function downloadBatchReplacementJson(items, format) {
-            const orderIds = items.map(item => item.order_id);
+            const validItems = items.filter(item => item.order_id && item.cdk);
+            const orderIds = validItems.map(item => item.order_id);
+            const cdkCodes = validItems.map(item => String(item.cdk || '').trim().toUpperCase());
 
             if (format === 'cpa-batch') {
                 // CPA格式单文件
                 fetch('/api/orders/download', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({order_ids: orderIds})
+                    body: JSON.stringify({order_ids: orderIds, cdk_codes: cdkCodes})
                 }).then(resp => resp.blob()).then(blob => {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -1168,7 +1175,7 @@ async function redeemCDK() {
                 fetch('/api/orders/download/kiro', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({order_ids: orderIds})
+                    body: JSON.stringify({order_ids: orderIds, cdk_codes: cdkCodes})
                 }).then(resp => resp.blob()).then(blob => {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -1179,16 +1186,15 @@ async function redeemCDK() {
                 }).catch(err => alert('下载失败: ' + err.message));
             } else if (format === 'kiro' || format === 'cpa') {
                 // 多文件下载
-                items.forEach((item, index) => {
-                    if (item.order_id) {
-                        setTimeout(() => {
-                            if (format === 'kiro') {
-                                window.open(`/api/order/${item.order_id}/download/kiro`, '_blank');
-                            } else {
-                                window.open(`/api/order/${item.order_id}/download`, '_blank');
-                            }
-                        }, index * 200);
-                    }
+                validItems.forEach((item, index) => {
+                    setTimeout(() => {
+                        const query = `?cdk=${encodeURIComponent(String(item.cdk || '').trim().toUpperCase())}`;
+                        if (format === 'kiro') {
+                            window.open(`/api/order/${item.order_id}/download/kiro${query}`, '_blank');
+                        } else {
+                            window.open(`/api/order/${item.order_id}/download${query}`, '_blank');
+                        }
+                    }, index * 200);
                 });
             } else {
                 // 默认格式：原始的替换记录格式
